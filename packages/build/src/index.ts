@@ -1,2 +1,2 @@
-// Placeholder - will be implemented in Phase 2
-export {};
+export { bundle } from './bundler.js';
+export type { BundleOptions, BundleResult, BundleFileResult } from './bundler.js';
