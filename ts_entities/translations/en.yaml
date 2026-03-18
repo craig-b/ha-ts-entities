@@ -14,3 +14,15 @@ configuration:
   auto_rebuild_on_registry_change:
     name: Auto-rebuild on registry change
     description: Rebuild when Home Assistant entity or service registries change.
+  mqtt_host:
+    name: MQTT host
+    description: MQTT broker hostname (leave empty to auto-detect from Mosquitto add-on).
+  mqtt_port:
+    name: MQTT port
+    description: MQTT broker port.
+  mqtt_username:
+    name: MQTT username
+    description: MQTT broker username.
+  mqtt_password:
+    name: MQTT password
+    description: MQTT broker password.

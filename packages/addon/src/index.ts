@@ -6,6 +6,10 @@ export interface AddonOptions {
   validation_schedule_minutes: number;
   auto_build_on_save: boolean;
   auto_rebuild_on_registry_change: boolean;
+  mqtt_host: string;
+  mqtt_port: number;
+  mqtt_username: string;
+  mqtt_password: string;
 }
 
 const DEFAULT_OPTIONS: AddonOptions = {
@@ -14,25 +18,38 @@ const DEFAULT_OPTIONS: AddonOptions = {
   validation_schedule_minutes: 60,
   auto_build_on_save: false,
   auto_rebuild_on_registry_change: false,
+  mqtt_host: '',
+  mqtt_port: 1883,
+  mqtt_username: '',
+  mqtt_password: '',
 };
 
-export async function fetchMqttCredentials(): Promise<MqttCredentials> {
+export async function fetchMqttCredentials(options: AddonOptions): Promise<MqttCredentials> {
+  // Try Supervisor service API first (works with Mosquitto add-on)
   const token = process.env.SUPERVISOR_TOKEN;
-  if (!token) {
-    throw new Error('SUPERVISOR_TOKEN not set — not running as HA add-on?');
+  if (token) {
+    try {
+      const response = await fetch('http://supervisor/services/mqtt', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { data: MqttCredentials };
+        return data.data;
+      }
+    } catch { /* fall through to options */ }
   }
 
-  const response = await fetch('http://supervisor/services/mqtt', {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`Failed to get MQTT credentials: ${response.status} ${response.statusText} — ${body}`);
+  // Fall back to add-on options
+  if (options.mqtt_host) {
+    return {
+      host: options.mqtt_host,
+      port: options.mqtt_port,
+      username: options.mqtt_username || undefined,
+      password: options.mqtt_password || undefined,
+    } as MqttCredentials;
   }
 
-  const data = JSON.parse(body) as { data: MqttCredentials };
-  return data.data;
+  throw new Error('No MQTT credentials: Supervisor MQTT service not available and mqtt_host not configured');
 }
 
 export async function readOptions(): Promise<AddonOptions> {
@@ -81,7 +98,7 @@ async function main(): Promise<void> {
   let mqttTransport: import('@ha-ts-entities/runtime').MqttTransport | null = null;
   try {
     log('Connecting MQTT...');
-    const credentials = await fetchMqttCredentials();
+    const credentials = await fetchMqttCredentials(options);
     const { MqttTransport } = await import('@ha-ts-entities/runtime');
     mqttTransport = new MqttTransport({
       credentials,

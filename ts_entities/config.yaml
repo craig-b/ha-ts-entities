@@ -11,7 +11,7 @@ homeassistant_api: true
 map:
   - addon_config:rw
 services:
-  - mqtt:need
+  - mqtt:want
 ingress: true
 ingress_port: 8099
 ingress_entry: /
@@ -23,9 +23,17 @@ options:
   validation_schedule_minutes: 60
   auto_build_on_save: false
   auto_rebuild_on_registry_change: false
+  mqtt_host: ""
+  mqtt_port: 1883
+  mqtt_username: ""
+  mqtt_password: ""
 schema:
   log_level: list(debug|info|warn|error)
   log_retention_days: int
   validation_schedule_minutes: int
   auto_build_on_save: bool
   auto_rebuild_on_registry_change: bool
+  mqtt_host: str?
+  mqtt_port: port?
+  mqtt_username: str?
+  mqtt_password: str?
