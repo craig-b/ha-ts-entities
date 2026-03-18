@@ -99,7 +99,11 @@ export class EntityLifecycleManager {
     if (entity.definition.init) {
       const context = this.createContext(instance);
       try {
-        const initialState = await entity.definition.init.call(context);
+        // Cast through any — the union of different `this` types on init() is not
+        // directly callable with EntityContext<unknown>, but at runtime the context
+        // is fully compatible. The type safety is enforced at the SDK definition site.
+        const initFn = entity.definition.init as (this: EntityContext) => unknown | Promise<unknown>;
+        const initialState = await initFn.call(context);
         if (initialState !== undefined) {
           instance.currentState = initialState;
           await this.transport.publishState(entity.definition.id, initialState);
@@ -140,7 +144,8 @@ export class EntityLifecycleManager {
     if (instance.entity.definition.destroy && instance.initialized) {
       try {
         const context = this.createContext(instance);
-        await instance.entity.definition.destroy.call(context);
+        const destroyFn = instance.entity.definition.destroy as (this: EntityContext) => void | Promise<void>;
+        await destroyFn.call(context);
       } catch (err) {
         this.logger.error(`destroy() failed for ${entityId}`, {
           error: err instanceof Error ? err.message : String(err),

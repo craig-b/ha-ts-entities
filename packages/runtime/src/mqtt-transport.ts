@@ -5,6 +5,9 @@ import type {
   SensorDefinition,
   BinarySensorDefinition,
   SwitchDefinition,
+  LightDefinition,
+  CoverDefinition,
+  ClimateDefinition,
 } from '@ha-ts-entities/sdk';
 import type { Transport } from './transport.js';
 
@@ -98,10 +101,40 @@ export class MqttTransport implements Transport {
   async register(entity: ResolvedEntity): Promise<void> {
     this.registeredEntities.set(entity.definition.id, entity);
 
-    // Subscribe to command topic for bidirectional entities
+    const id = entity.definition.id;
+
+    // Subscribe to command topics for bidirectional entities
     if ('onCommand' in entity.definition) {
-      const cmdTopic = `ts-entities/${entity.definition.id}/set`;
-      this.client?.subscribe(cmdTopic);
+      this.client?.subscribe(`ts-entities/${id}/set`);
+
+      // Cover needs additional position/tilt command topics
+      if (entity.definition.type === 'cover') {
+        const coverConfig = (entity.definition as CoverDefinition).config;
+        if (coverConfig?.position) {
+          this.client?.subscribe(`ts-entities/${id}/position/set`);
+        }
+        if (coverConfig?.tilt) {
+          this.client?.subscribe(`ts-entities/${id}/tilt/set`);
+        }
+      }
+
+      // Climate needs separate command topics per feature
+      if (entity.definition.type === 'climate') {
+        this.client?.subscribe(`ts-entities/${id}/mode/set`);
+        this.client?.subscribe(`ts-entities/${id}/temperature/set`);
+        this.client?.subscribe(`ts-entities/${id}/temperature_high/set`);
+        this.client?.subscribe(`ts-entities/${id}/temperature_low/set`);
+        const climateConfig = (entity.definition as ClimateDefinition).config;
+        if (climateConfig?.fan_modes) {
+          this.client?.subscribe(`ts-entities/${id}/fan_mode/set`);
+        }
+        if (climateConfig?.swing_modes) {
+          this.client?.subscribe(`ts-entities/${id}/swing_mode/set`);
+        }
+        if (climateConfig?.preset_modes) {
+          this.client?.subscribe(`ts-entities/${id}/preset_mode/set`);
+        }
+      }
     }
 
     // Build and publish device discovery
@@ -113,16 +146,55 @@ export class MqttTransport implements Transport {
     state: unknown,
     attributes?: Record<string, unknown>,
   ): Promise<void> {
+    const entity = this.registeredEntities.get(entityId);
     const topic = `ts-entities/${entityId}/state`;
 
     let payload: string;
-    if (attributes && Object.keys(attributes).length > 0) {
+
+    // Complex entities (light, climate) use JSON state
+    if (typeof state === 'object' && state !== null) {
+      payload = JSON.stringify(
+        attributes ? { ...state, ...attributes } : state,
+      );
+    } else if (attributes && Object.keys(attributes).length > 0) {
       payload = JSON.stringify({ state: String(state), ...attributes });
     } else {
       payload = String(state);
     }
 
     await this.publish(topic, payload, { retain: false });
+
+    // Climate also publishes to individual state topics for HA compatibility
+    if (entity?.definition.type === 'climate' && typeof state === 'object' && state !== null) {
+      const cs = state as Record<string, unknown>;
+      if (cs.mode !== undefined) {
+        await this.publish(`ts-entities/${entityId}/mode/state`, String(cs.mode), { retain: false });
+      }
+      if (cs.temperature !== undefined) {
+        await this.publish(`ts-entities/${entityId}/temperature/state`, String(cs.temperature), { retain: false });
+      }
+      if (cs.target_temp_high !== undefined) {
+        await this.publish(`ts-entities/${entityId}/temperature_high/state`, String(cs.target_temp_high), { retain: false });
+      }
+      if (cs.target_temp_low !== undefined) {
+        await this.publish(`ts-entities/${entityId}/temperature_low/state`, String(cs.target_temp_low), { retain: false });
+      }
+      if (cs.current_temperature !== undefined) {
+        await this.publish(`ts-entities/${entityId}/current_temperature`, String(cs.current_temperature), { retain: false });
+      }
+      if (cs.fan_mode !== undefined) {
+        await this.publish(`ts-entities/${entityId}/fan_mode/state`, String(cs.fan_mode), { retain: false });
+      }
+      if (cs.swing_mode !== undefined) {
+        await this.publish(`ts-entities/${entityId}/swing_mode/state`, String(cs.swing_mode), { retain: false });
+      }
+      if (cs.preset_mode !== undefined) {
+        await this.publish(`ts-entities/${entityId}/preset_mode/state`, String(cs.preset_mode), { retain: false });
+      }
+      if (cs.action !== undefined) {
+        await this.publish(`ts-entities/${entityId}/action`, String(cs.action), { retain: false });
+      }
+    }
   }
 
   onCommand(entityId: string, handler: (command: unknown) => void): void {
@@ -133,10 +205,28 @@ export class MqttTransport implements Transport {
     const entity = this.registeredEntities.get(entityId);
     if (!entity) return;
 
-    // Unsubscribe from command topic
+    const id = entity.definition.id;
+
+    // Unsubscribe from all command topics
     if ('onCommand' in entity.definition) {
-      const cmdTopic = `ts-entities/${entity.definition.id}/set`;
-      this.client?.unsubscribe(cmdTopic);
+      this.client?.unsubscribe(`ts-entities/${id}/set`);
+
+      if (entity.definition.type === 'cover') {
+        const coverConfig = (entity.definition as CoverDefinition).config;
+        if (coverConfig?.position) this.client?.unsubscribe(`ts-entities/${id}/position/set`);
+        if (coverConfig?.tilt) this.client?.unsubscribe(`ts-entities/${id}/tilt/set`);
+      }
+
+      if (entity.definition.type === 'climate') {
+        this.client?.unsubscribe(`ts-entities/${id}/mode/set`);
+        this.client?.unsubscribe(`ts-entities/${id}/temperature/set`);
+        this.client?.unsubscribe(`ts-entities/${id}/temperature_high/set`);
+        this.client?.unsubscribe(`ts-entities/${id}/temperature_low/set`);
+        const climateConfig = (entity.definition as ClimateDefinition).config;
+        if (climateConfig?.fan_modes) this.client?.unsubscribe(`ts-entities/${id}/fan_mode/set`);
+        if (climateConfig?.swing_modes) this.client?.unsubscribe(`ts-entities/${id}/swing_mode/set`);
+        if (climateConfig?.preset_modes) this.client?.unsubscribe(`ts-entities/${id}/preset_mode/set`);
+      }
     }
 
     this.commandHandlers.delete(entityId);
@@ -281,6 +371,15 @@ export class MqttTransport implements Transport {
       case 'switch':
         this.applySwitchConfig(base, definition as SwitchDefinition);
         break;
+      case 'light':
+        this.applyLightConfig(base, definition as LightDefinition);
+        break;
+      case 'cover':
+        this.applyCoverConfig(base, definition as CoverDefinition);
+        break;
+      case 'climate':
+        this.applyClimateConfig(base, definition as ClimateDefinition);
+        break;
     }
 
     return base;
@@ -307,6 +406,119 @@ export class MqttTransport implements Transport {
     if (config.device_class) base.dev_cla = config.device_class;
   }
 
+  private applyLightConfig(base: Record<string, unknown>, def: LightDefinition): void {
+    const config = def.config;
+    if (!config) return;
+
+    // Use JSON schema for clean command/state payloads
+    base.schema = 'json';
+    base.brightness = config.supported_color_modes.some(
+      (m) => m !== 'onoff',
+    );
+    if (config.supported_color_modes.length > 0) {
+      base.sup_clrm = config.supported_color_modes;
+    }
+    if (config.effect_list && config.effect_list.length > 0) {
+      base.fx_list = config.effect_list;
+    }
+    if (config.min_color_temp_kelvin != null) {
+      base.min_klv = config.min_color_temp_kelvin;
+    }
+    if (config.max_color_temp_kelvin != null) {
+      base.max_klv = config.max_color_temp_kelvin;
+    }
+    // Use Kelvin for color temperature
+    if (config.supported_color_modes.includes('color_temp')) {
+      base.clr_temp_klv = true;
+    }
+  }
+
+  private applyCoverConfig(base: Record<string, unknown>, def: CoverDefinition): void {
+    const config = def.config;
+    const id = def.id;
+
+    if (config?.device_class) base.dev_cla = config.device_class;
+
+    // Cover uses specific payloads for open/close/stop
+    base.pl_open = 'OPEN';
+    base.pl_cls = 'CLOSE';
+    base.pl_stop = 'STOP';
+
+    // State values
+    base.stat_open = 'open';
+    base.stat_opening = 'opening';
+    base.stat_clsd = 'closed';
+    base.stat_closing = 'closing';
+    base.stat_stopped = 'stopped';
+
+    // Position support
+    if (config?.position) {
+      base.pos_t = `ts-entities/${id}/position`;
+      base.set_pos_t = `ts-entities/${id}/position/set`;
+      base.pos_open = 100;
+      base.pos_clsd = 0;
+    }
+
+    // Tilt support
+    if (config?.tilt) {
+      base.tilt_cmd_t = `ts-entities/${id}/tilt/set`;
+      base.tilt_status_t = `ts-entities/${id}/tilt`;
+    }
+  }
+
+  private applyClimateConfig(base: Record<string, unknown>, def: ClimateDefinition): void {
+    const config = def.config!;
+    const id = def.id;
+
+    // Climate uses separate topics per feature (not the generic cmd_t)
+    delete base.cmd_t;
+
+    // Mode
+    base.mode_cmd_t = `ts-entities/${id}/mode/set`;
+    base.mode_stat_t = `ts-entities/${id}/mode/state`;
+    base.modes = config.hvac_modes;
+
+    // Temperature
+    base.temp_cmd_t = `ts-entities/${id}/temperature/set`;
+    base.temp_stat_t = `ts-entities/${id}/temperature/state`;
+    base.curr_temp_t = `ts-entities/${id}/current_temperature`;
+
+    // Dual setpoint
+    base.temp_hi_cmd_t = `ts-entities/${id}/temperature_high/set`;
+    base.temp_hi_stat_t = `ts-entities/${id}/temperature_high/state`;
+    base.temp_lo_cmd_t = `ts-entities/${id}/temperature_low/set`;
+    base.temp_lo_stat_t = `ts-entities/${id}/temperature_low/state`;
+
+    if (config.min_temp != null) base.min_temp = config.min_temp;
+    if (config.max_temp != null) base.max_temp = config.max_temp;
+    if (config.temp_step != null) base.temp_step = config.temp_step;
+    if (config.temperature_unit) base.temp_unit = config.temperature_unit;
+
+    // Fan modes
+    if (config.fan_modes && config.fan_modes.length > 0) {
+      base.fan_mode_cmd_t = `ts-entities/${id}/fan_mode/set`;
+      base.fan_mode_stat_t = `ts-entities/${id}/fan_mode/state`;
+      base.fan_modes = config.fan_modes;
+    }
+
+    // Swing modes
+    if (config.swing_modes && config.swing_modes.length > 0) {
+      base.swing_mode_cmd_t = `ts-entities/${id}/swing_mode/set`;
+      base.swing_mode_stat_t = `ts-entities/${id}/swing_mode/state`;
+      base.swing_modes = config.swing_modes;
+    }
+
+    // Preset modes
+    if (config.preset_modes && config.preset_modes.length > 0) {
+      base.pr_mode_cmd_t = `ts-entities/${id}/preset_mode/set`;
+      base.pr_mode_stat_t = `ts-entities/${id}/preset_mode/state`;
+      base.pr_modes = config.preset_modes;
+    }
+
+    // Action topic
+    base.act_t = `ts-entities/${id}/action`;
+  }
+
   private handleMessage(topic: string, payload: string): void {
     // Handle HA restart
     if (topic === HA_STATUS_TOPIC && payload === 'online') {
@@ -314,20 +526,56 @@ export class MqttTransport implements Transport {
       return;
     }
 
-    // Handle command messages: ts-entities/<entity_id>/set
-    const match = topic.match(/^ts-entities\/(.+)\/set$/);
-    if (match) {
-      const entityId = match[1];
+    // Handle simple command: ts-entities/<entity_id>/set
+    const simpleMatch = topic.match(/^ts-entities\/([^/]+)\/set$/);
+    if (simpleMatch) {
+      const entityId = simpleMatch[1];
       const handler = this.commandHandlers.get(entityId);
       if (handler) {
         try {
-          const parsed = JSON.parse(payload);
-          handler(parsed);
+          handler(JSON.parse(payload));
         } catch {
-          // Not JSON — pass as string
           handler(payload);
         }
       }
+      return;
+    }
+
+    // Handle cover position/tilt: ts-entities/<id>/position/set or ts-entities/<id>/tilt/set
+    const coverPosMatch = topic.match(/^ts-entities\/([^/]+)\/(position|tilt)\/set$/);
+    if (coverPosMatch) {
+      const [, entityId, subCommand] = coverPosMatch;
+      const handler = this.commandHandlers.get(entityId);
+      if (handler) {
+        const value = Number(payload);
+        if (subCommand === 'position') {
+          handler({ action: 'set_position', position: value });
+        } else {
+          handler({ action: 'set_tilt', tilt: value });
+        }
+      }
+      return;
+    }
+
+    // Handle climate sub-topics: ts-entities/<id>/<feature>/set
+    const climateMatch = topic.match(
+      /^ts-entities\/([^/]+)\/(mode|temperature|temperature_high|temperature_low|fan_mode|swing_mode|preset_mode)\/set$/,
+    );
+    if (climateMatch) {
+      const [, entityId, feature] = climateMatch;
+      const handler = this.commandHandlers.get(entityId);
+      if (handler) {
+        const command: Record<string, unknown> = {};
+        if (feature === 'temperature' || feature === 'temperature_high' || feature === 'temperature_low') {
+          command[feature === 'temperature' ? 'temperature' : feature === 'temperature_high' ? 'target_temp_high' : 'target_temp_low'] = Number(payload);
+        } else if (feature === 'mode') {
+          command.hvac_mode = payload;
+        } else {
+          command[feature] = payload;
+        }
+        handler(command);
+      }
+      return;
     }
   }
 
