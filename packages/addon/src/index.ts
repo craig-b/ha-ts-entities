@@ -26,11 +26,12 @@ export async function fetchMqttCredentials(): Promise<MqttCredentials> {
     headers: { Authorization: `Bearer ${token}` },
   });
 
+  const body = await response.text();
   if (!response.ok) {
-    throw new Error(`Failed to get MQTT credentials: ${response.status} ${response.statusText}`);
+    throw new Error(`Failed to get MQTT credentials: ${response.status} ${response.statusText} — ${body}`);
   }
 
-  const data = (await response.json()) as { data: MqttCredentials };
+  const data = JSON.parse(body) as { data: MqttCredentials };
   return data.data;
 }
 
