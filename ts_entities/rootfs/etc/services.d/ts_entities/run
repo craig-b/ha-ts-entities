@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv sh
+echo "Starting TS Entities add-on..."
+echo "Node: $(node --version)"
+exec node /app/packages/addon/dist/index.js

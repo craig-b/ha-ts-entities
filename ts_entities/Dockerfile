@@ -51,7 +51,5 @@ RUN rm -rf /tmp/src && \
 # Ensure persistent directories exist
 RUN mkdir -p /data /config
 
-# Make run script executable
-RUN chmod a+x /app/run.sh
-
-CMD [ "/app/run.sh" ]
+# Copy s6 service scripts
+COPY rootfs /
