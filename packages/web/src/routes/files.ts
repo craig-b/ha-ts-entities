@@ -1,0 +1,137 @@
+import { Hono } from 'hono';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+export interface FilesRouteOptions {
+  scriptsDir: string;
+}
+
+export function createFilesRoutes(opts: FilesRouteOptions) {
+  const app = new Hono();
+
+  // List files in scripts directory
+  app.get('/', (c) => {
+    try {
+      const files = listFiles(opts.scriptsDir, opts.scriptsDir);
+      return c.json({ files });
+    } catch (err) {
+      return c.json({ error: 'Failed to list files' }, 500);
+    }
+  });
+
+  // Read file contents
+  app.get('/:path{.+}', (c) => {
+    const filePath = c.req.param('path');
+    const fullPath = resolveSafe(opts.scriptsDir, filePath);
+    if (!fullPath) {
+      return c.json({ error: 'Invalid path' }, 400);
+    }
+
+    try {
+      if (!fs.existsSync(fullPath)) {
+        return c.json({ error: 'File not found' }, 404);
+      }
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      return c.json({ path: filePath, content });
+    } catch (err) {
+      return c.json({ error: 'Failed to read file' }, 500);
+    }
+  });
+
+  // Write file contents
+  app.put('/:path{.+}', async (c) => {
+    const filePath = c.req.param('path');
+    const fullPath = resolveSafe(opts.scriptsDir, filePath);
+    if (!fullPath) {
+      return c.json({ error: 'Invalid path' }, 400);
+    }
+
+    try {
+      const body = await c.req.json<{ content: string }>();
+      if (typeof body.content !== 'string') {
+        return c.json({ error: 'Missing content field' }, 400);
+      }
+
+      // Ensure parent directory exists
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, body.content, 'utf-8');
+      return c.json({ success: true, path: filePath });
+    } catch (err) {
+      return c.json({ error: 'Failed to write file' }, 500);
+    }
+  });
+
+  // Delete file
+  app.delete('/:path{.+}', (c) => {
+    const filePath = c.req.param('path');
+    const fullPath = resolveSafe(opts.scriptsDir, filePath);
+    if (!fullPath) {
+      return c.json({ error: 'Invalid path' }, 400);
+    }
+
+    try {
+      if (!fs.existsSync(fullPath)) {
+        return c.json({ error: 'File not found' }, 404);
+      }
+      fs.unlinkSync(fullPath);
+      return c.json({ success: true });
+    } catch (err) {
+      return c.json({ error: 'Failed to delete file' }, 500);
+    }
+  });
+
+  return app;
+}
+
+/** Resolve path safely, preventing directory traversal */
+function resolveSafe(baseDir: string, relativePath: string): string | null {
+  const resolved = path.resolve(baseDir, relativePath);
+  if (!resolved.startsWith(path.resolve(baseDir) + path.sep) && resolved !== path.resolve(baseDir)) {
+    return null;
+  }
+  return resolved;
+}
+
+interface FileEntry {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: FileEntry[];
+}
+
+function listFiles(dir: string, baseDir: string): FileEntry[] {
+  if (!fs.existsSync(dir)) return [];
+
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const result: FileEntry[] = [];
+
+  for (const entry of entries) {
+    // Skip node_modules and hidden directories
+    if (entry.name === 'node_modules' || entry.name.startsWith('.')) {
+      continue;
+    }
+
+    const fullPath = path.join(dir, entry.name);
+    const relativePath = path.relative(baseDir, fullPath);
+
+    if (entry.isDirectory()) {
+      result.push({
+        name: entry.name,
+        path: relativePath,
+        type: 'directory',
+        children: listFiles(fullPath, baseDir),
+      });
+    } else {
+      result.push({
+        name: entry.name,
+        path: relativePath,
+        type: 'file',
+      });
+    }
+  }
+
+  return result.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}

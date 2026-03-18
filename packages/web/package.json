@@ -9,7 +9,11 @@
     "dev": "tsup --watch"
   },
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "hono": "^4.12.8"
   }
 }
