@@ -56,6 +56,43 @@ export interface EntityLogger {
   error(message: string, data?: Record<string, unknown>): void;
 }
 
+// ---- State changed event (from HA WebSocket) ----
+
+export interface StateChangedEvent {
+  entity_id: string;
+  old_state: string;
+  new_state: string;
+  old_attributes: Record<string, unknown>;
+  new_attributes: Record<string, unknown>;
+  timestamp: number;
+}
+
+export type StateChangedCallback = (event: StateChangedEvent) => void;
+
+// ---- Reaction rule for declarative reactions ----
+
+export interface ReactionRule {
+  to?: string;
+  when?: (event: StateChangedEvent) => boolean;
+  do: () => void | Promise<void>;
+  after?: number;
+}
+
+// ---- HA API interface (available on EntityContext.ha) ----
+
+export interface HAClient {
+  on(entityOrDomain: string | string[], callback: StateChangedCallback): () => void;
+  callService(entity: string, service: string, data?: Record<string, unknown>): Promise<void>;
+  getState(entityId: string): Promise<{
+    state: string;
+    attributes: Record<string, unknown>;
+    last_changed: string;
+    last_updated: string;
+  } | null>;
+  getEntities(domain?: string): Promise<string[]>;
+  fireEvent(eventType: string, eventData?: Record<string, unknown>): Promise<void>;
+}
+
 // ---- Entity context (bound as `this` in callbacks) ----
 
 export interface EntityContext<TState = unknown> {
@@ -65,6 +102,7 @@ export interface EntityContext<TState = unknown> {
   setTimeout(fn: () => void, ms: number): void;
   setInterval(fn: () => void, ms: number): void;
   fetch: typeof globalThis.fetch;
+  ha: HAClient;
   mqtt: {
     publish(topic: string, payload: string, opts?: { retain?: boolean }): void;
     subscribe(topic: string, handler: (payload: string) => void): void;

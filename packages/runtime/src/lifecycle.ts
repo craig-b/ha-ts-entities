@@ -2,6 +2,7 @@ import type {
   EntityContext,
   EntityDefinition,
   EntityLogger,
+  HAClient,
   ResolvedEntity,
 } from '@ha-ts-entities/sdk';
 import type { Transport } from './transport.js';
@@ -40,10 +41,12 @@ export class EntityLifecycleManager {
   private instances = new Map<string, EntityInstance>();
   private transport: Transport;
   private logger: LifecycleLogger;
+  private haClient: HAClient | null;
 
-  constructor(transport: Transport, logger: LifecycleLogger) {
+  constructor(transport: Transport, logger: LifecycleLogger, haClient?: HAClient | null) {
     this.transport = transport;
     this.logger = logger;
+    this.haClient = haClient ?? null;
   }
 
   async deploy(entities: ResolvedEntity[]): Promise<void> {
@@ -182,6 +185,7 @@ export class EntityLifecycleManager {
     const { entity, handles } = instance;
     const transport = this.transport;
     const logger = this.logger;
+    const haClient = this.haClient;
     const entityId = entity.definition.id;
 
     const entityLogger: EntityLogger = {
@@ -189,6 +193,28 @@ export class EntityLifecycleManager {
       info: (msg, data) => logger.info(`[${entityId}] ${msg}`, data),
       warn: (msg, data) => logger.warn(`[${entityId}] ${msg}`, data),
       error: (msg, data) => logger.error(`[${entityId}] ${msg}`, data),
+    };
+
+    // Build ha API — delegates to the shared HAClient, or stubs if unavailable
+    const ha: HAClient = haClient ?? {
+      on() {
+        entityLogger.warn('ha.on() unavailable — no WebSocket connection');
+        return () => {};
+      },
+      async callService() {
+        entityLogger.warn('ha.callService() unavailable — no WebSocket connection');
+      },
+      async getState() {
+        entityLogger.warn('ha.getState() unavailable — no WebSocket connection');
+        return null;
+      },
+      async getEntities() {
+        entityLogger.warn('ha.getEntities() unavailable — no WebSocket connection');
+        return [];
+      },
+      async fireEvent() {
+        entityLogger.warn('ha.fireEvent() unavailable — no WebSocket connection');
+      },
     };
 
     const context: EntityContext = {
@@ -230,6 +256,8 @@ export class EntityLifecycleManager {
       },
 
       fetch: globalThis.fetch,
+
+      ha,
 
       mqtt: {
         publish(_topic, _payload, _opts) {
