@@ -1,0 +1,12 @@
+[submodule ".submodules/developers.home-assistant"]
+	path = .submodules/developers.home-assistant
+	url = https://github.com/home-assistant/developers.home-assistant.git
+	shallow = true
+[submodule ".submodules/home-assistant.io"]
+	path = .submodules/home-assistant.io
+	url = https://github.com/home-assistant/home-assistant.io.git
+	shallow = true
+[submodule ".submodules/hacs-documentation"]
+	path = .submodules/hacs-documentation
+	url = https://github.com/hacs/documentation.git
+	shallow = true
