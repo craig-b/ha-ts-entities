@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sensor, entityFactory } from '../index.js';
+import { sensor, defineSwitch, light, cover, climate, entityFactory } from '../index.js';
 import { rangeValidator, oneOfValidator, rgbValidator } from '../validate.js';
 
 describe('sensor()', () => {
@@ -48,6 +48,114 @@ describe('sensor()', () => {
 
     expect(s.icon).toBe('mdi:thermometer');
     expect(s.category).toBe('diagnostic');
+  });
+});
+
+describe('defineSwitch()', () => {
+  it('creates a switch definition with onCommand', () => {
+    const s = defineSwitch({
+      id: 'pump',
+      name: 'Pump',
+      config: { device_class: 'switch' },
+      onCommand(cmd) {
+        // cmd is typed as 'ON' | 'OFF'
+        void cmd;
+      },
+    });
+
+    expect(s.type).toBe('switch');
+    expect(s.id).toBe('pump');
+    expect(s.config?.device_class).toBe('switch');
+    expect(typeof s.onCommand).toBe('function');
+  });
+});
+
+describe('light()', () => {
+  it('creates a light definition with color modes', () => {
+    const l = light({
+      id: 'desk_light',
+      name: 'Desk Light',
+      config: {
+        supported_color_modes: ['rgb', 'brightness'],
+        effect_list: ['rainbow', 'breathe'],
+      },
+      onCommand(cmd) {
+        void cmd;
+      },
+    });
+
+    expect(l.type).toBe('light');
+    expect(l.id).toBe('desk_light');
+    expect(l.config?.supported_color_modes).toEqual(['rgb', 'brightness']);
+    expect(l.config?.effect_list).toEqual(['rainbow', 'breathe']);
+    expect(typeof l.onCommand).toBe('function');
+  });
+
+  it('supports color temp range config', () => {
+    const l = light({
+      id: 'ct_light',
+      name: 'CT Light',
+      config: {
+        supported_color_modes: ['color_temp'],
+        min_color_temp_kelvin: 2700,
+        max_color_temp_kelvin: 6500,
+      },
+      onCommand() {},
+    });
+
+    expect(l.config?.min_color_temp_kelvin).toBe(2700);
+    expect(l.config?.max_color_temp_kelvin).toBe(6500);
+  });
+});
+
+describe('cover()', () => {
+  it('creates a cover definition', () => {
+    const c = cover({
+      id: 'garage_door',
+      name: 'Garage Door',
+      config: {
+        device_class: 'garage',
+        position: true,
+      },
+      onCommand(cmd) {
+        void cmd;
+      },
+    });
+
+    expect(c.type).toBe('cover');
+    expect(c.id).toBe('garage_door');
+    expect(c.config?.device_class).toBe('garage');
+    expect(c.config?.position).toBe(true);
+    expect(typeof c.onCommand).toBe('function');
+  });
+});
+
+describe('climate()', () => {
+  it('creates a climate definition with modes', () => {
+    const cl = climate({
+      id: 'bedroom_climate',
+      name: 'Bedroom',
+      config: {
+        hvac_modes: ['off', 'heat', 'cool'],
+        min_temp: 16,
+        max_temp: 30,
+        temp_step: 0.5,
+        fan_modes: ['low', 'high'],
+        preset_modes: ['eco', 'comfort'],
+      },
+      onCommand(cmd) {
+        void cmd;
+      },
+    });
+
+    expect(cl.type).toBe('climate');
+    expect(cl.config?.hvac_modes).toEqual(['off', 'heat', 'cool']);
+    expect(cl.config?.min_temp).toBe(16);
+    expect(cl.config?.max_temp).toBe(30);
+    expect(cl.config?.temp_step).toBe(0.5);
+    expect(cl.config?.fan_modes).toEqual(['low', 'high']);
+    expect(cl.config?.preset_modes).toEqual(['eco', 'comfort']);
+    expect(typeof cl.onCommand).toBe('function');
   });
 });
 
