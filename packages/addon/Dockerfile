@@ -1,4 +1,5 @@
 ARG BUILD_FROM=node:20-alpine
+ARG BUILD_VERSION=dev
 FROM ${BUILD_FROM}
 
 # Install build dependencies for native modules (better-sqlite3)
@@ -43,7 +44,7 @@ LABEL \
   io.hass.name="TS Entities" \
   io.hass.description="Define Home Assistant entities in TypeScript" \
   io.hass.type="addon" \
-  io.hass.version="0.1.0" \
+  io.hass.version="${BUILD_VERSION}" \
   io.hass.arch="amd64|aarch64|armv7"
 
 CMD [ "/app/run.sh" ]

@@ -75,6 +75,8 @@ jobs:
           file: packages/addon/Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
+          build-args: |
+            BUILD_VERSION=${{ steps.version.outputs.version }}
           tags: |
             ${{ env.IMAGE_BASE }}-${{ matrix.arch }}:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_BASE }}-${{ matrix.arch }}:latest
