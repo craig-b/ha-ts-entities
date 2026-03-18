@@ -1,4 +1,6 @@
 ARG BUILD_FROM
+ARG BUILD_ARCH
+ARG BUILD_VERSION
 FROM ${BUILD_FROM}
 
 # Install Node.js 20 LTS and build tools for native modules (better-sqlite3)
@@ -10,7 +12,6 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
 # Clone and build the project
-ARG BUILD_VERSION=0.1.0
 RUN apk add --no-cache git && \
     git clone --depth 1 --branch "v${BUILD_VERSION}" \
       https://github.com/craig-b/ha-ts-entities.git /tmp/src || \

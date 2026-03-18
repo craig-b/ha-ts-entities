@@ -8,14 +8,13 @@ VERSION="${VERSION#v}"
 
 echo "Releasing v${VERSION}..."
 
-# Bump version in add-on config files
-sed -i "s/^version: .*/version: ${VERSION}/" ts_entities/config.yaml
-sed -i "s/^  BUILD_VERSION: .*/  BUILD_VERSION: \"${VERSION}\"/" ts_entities/build.yaml
+# Bump version in add-on config
+sed -i "s/^version: .*/version: \"${VERSION}\"/" ts_entities/config.yaml
 
 # Commit, tag, push
-git add ts_entities/config.yaml ts_entities/build.yaml
+git add ts_entities/config.yaml
 git commit -m "Release v${VERSION}"
 git tag "v${VERSION}"
 git push origin main "v${VERSION}"
 
-echo "Done. v${VERSION} tagged and pushed — CI will build and publish Docker images."
+echo "Done. v${VERSION} tagged and pushed — builder will build and publish Docker images."
