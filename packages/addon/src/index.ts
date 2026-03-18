@@ -44,20 +44,15 @@ export async function readOptions(): Promise<AddonOptions> {
   }
 }
 
+function log(msg: string): void {
+  console.log(`[${new Date().toISOString()}] [ts-entities] ${msg}`);
+}
+
 async function main(): Promise<void> {
   const options = await readOptions();
-  console.log(`[ts-entities] Starting with log_level=${options.log_level}`);
-
-  // Startup sequence (from infrastructure.md):
-  // 1. Read add-on options ✓ (above)
-  // 2. Initialize SQLite logger
-  // 3. Connect to MQTT broker
-  // 4. Configure LWT, publish online
-  // 5. Connect to HA WebSocket API
-  // 6. Start web server on ingress port (8099)
-  // 7. Load cached build from /data/last-build/ if exists
-  // 8. Start scheduled validation timer
-  // 9. Subscribe to homeassistant/status for HA restart re-discovery
+  log(`Starting with log_level=${options.log_level}`);
+  log(`Node ${process.version}, argv: ${process.argv.join(' ')}`);
+  log(`Step 2: Initializing SQLite logger...`);
 
   // Step 2: SQLite Logger
   let logger: import('@ha-ts-entities/runtime').SQLiteLogger;
