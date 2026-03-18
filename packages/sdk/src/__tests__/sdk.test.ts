@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { sensor, defineSwitch, light, cover, climate, entityFactory } from '../index.js';
-import { rangeValidator, oneOfValidator, rgbValidator } from '../validate.js';
+import { rangeValidator, oneOfValidator, rgbValidator, entityExistsValidator, entityDomainValidator } from '../validate.js';
 
 describe('sensor()', () => {
   it('creates a sensor definition with type "sensor"', () => {
@@ -229,5 +229,45 @@ describe('rgbValidator()', () => {
     expect(() => validate([-1, 0, 0])).toThrow(TypeError);
     expect(() => validate([0, 0])).toThrow(TypeError);
     expect(() => validate('red')).toThrow(TypeError);
+  });
+});
+
+describe('entityExistsValidator()', () => {
+  const knownIds = ['light.living_room', 'light.bedroom', 'switch.pump'];
+
+  it('accepts known entity IDs', () => {
+    const validate = entityExistsValidator(knownIds);
+    expect(validate('light.living_room')).toBe('light.living_room');
+    expect(validate('switch.pump')).toBe('switch.pump');
+  });
+
+  it('rejects unknown entity IDs', () => {
+    const validate = entityExistsValidator(knownIds);
+    expect(() => validate('light.nonexistent')).toThrow(TypeError);
+  });
+
+  it('rejects non-string values', () => {
+    const validate = entityExistsValidator(knownIds);
+    expect(() => validate(42 as unknown as string)).toThrow(TypeError);
+  });
+});
+
+describe('entityDomainValidator()', () => {
+  const knownIds = ['light.living_room', 'light.bedroom', 'switch.pump'];
+
+  it('accepts entity IDs in the specified domain', () => {
+    const validate = entityDomainValidator('light', knownIds);
+    expect(validate('light.living_room')).toBe('light.living_room');
+    expect(validate('light.bedroom')).toBe('light.bedroom');
+  });
+
+  it('rejects entity IDs from other domains', () => {
+    const validate = entityDomainValidator('light', knownIds);
+    expect(() => validate('switch.pump')).toThrow(TypeError);
+  });
+
+  it('rejects unknown entity IDs', () => {
+    const validate = entityDomainValidator('light', knownIds);
+    expect(() => validate('light.nonexistent')).toThrow(TypeError);
   });
 });

@@ -32,3 +32,28 @@ export function rgbValidator() {
     return value as [number, number, number];
   };
 }
+
+export function entityExistsValidator(knownEntityIds: readonly string[]) {
+  const idSet = new Set(knownEntityIds);
+  return (value: string): string => {
+    if (typeof value !== 'string' || !idSet.has(value)) {
+      throw new TypeError(
+        `Unknown entity ID '${value}'. Expected one of ${knownEntityIds.length} known entities.`,
+      );
+    }
+    return value;
+  };
+}
+
+export function entityDomainValidator(domain: string, knownEntityIds: readonly string[]) {
+  const matching = knownEntityIds.filter((id) => id.startsWith(`${domain}.`));
+  const idSet = new Set(matching);
+  return (value: string): string => {
+    if (typeof value !== 'string' || !idSet.has(value)) {
+      throw new TypeError(
+        `Expected entity ID in domain '${domain}', got '${value}'.`,
+      );
+    }
+    return value;
+  };
+}
