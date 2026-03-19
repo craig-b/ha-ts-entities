@@ -219,8 +219,31 @@ async function main(): Promise<void> {
     // Wire up real-time log broadcasting via WebSocket
     broadcastLog = (entry) => wsHub.broadcast('logs', 'new', entry);
 
-    const { serve } = await import('@hono/node-server');
-    serve({ fetch: app.fetch, port: 8099 });
+    // Start HTTP server with WebSocket upgrade support
+    const { createAdaptorServer } = await import('@hono/node-server');
+    const { WebSocketServer } = await import('ws');
+    const server = createAdaptorServer({ fetch: app.fetch });
+    const wss = new WebSocketServer({ noServer: true });
+
+    server.on('upgrade', (req, socket, head) => {
+      // Accept upgrade on /ws (with or without ingress prefix)
+      const url = req.url ?? '';
+      if (url === '/ws' || url === '//ws' || url.endsWith('/ws')) {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          // Subscribe to all channels
+          const unsubs = [
+            wsHub.subscribe('build', ws),
+            wsHub.subscribe('entities', ws),
+            wsHub.subscribe('logs', ws),
+          ];
+          ws.on('close', () => unsubs.forEach((fn) => fn()));
+        });
+      } else {
+        socket.destroy();
+      }
+    });
+
+    server.listen(8099);
     log('Web server listening on port 8099');
   } catch (err) {
     log(`Web server failed: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);

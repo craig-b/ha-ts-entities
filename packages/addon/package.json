@@ -13,10 +13,12 @@
     "@ha-ts-entities/runtime": "workspace:*",
     "@ha-ts-entities/web": "workspace:*",
     "@hono/node-server": "^1.19.11",
-    "hono": "^4.12.8"
+    "hono": "^4.12.8",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "@types/ws": "^8.18.1",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0"
   }

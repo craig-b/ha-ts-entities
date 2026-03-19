@@ -35,10 +35,16 @@ importers:
       hono:
         specifier: ^4.12.8
         version: 4.12.8
+      ws:
+        specifier: ^8.19.0
+        version: 8.19.0
     devDependencies:
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
