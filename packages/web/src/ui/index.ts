@@ -801,6 +801,11 @@ const APP_JS = `
     api('GET', '/api/types/sdk').then(function(sdkResult) {
       if (sdkResult && sdkResult.files) {
         var files = sdkResult.files;
+        // Register a virtual package.json so Monaco resolves the types field
+        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+          JSON.stringify({ name: '@ha-ts-entities/sdk', types: './dist/index.d.ts' }),
+          'file:///node_modules/@ha-ts-entities/sdk/package.json'
+        );
         Object.keys(files).forEach(function(filename) {
           monaco.languages.typescript.typescriptDefaults.addExtraLib(
             files[filename],
