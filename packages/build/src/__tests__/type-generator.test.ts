@@ -381,7 +381,7 @@ describe('generateTypes()', () => {
       cleanup();
     });
 
-    it('generates typed on() overloads for each entity', () => {
+    it('generates typed on() overloads for each entity with entity_id literal', () => {
       setup();
       generateTypes(makeRegistryData(), outputDir);
       const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
@@ -389,6 +389,8 @@ describe('generateTypes()', () => {
       expect(content).toContain("on(entity: 'light.living_room',");
       expect(content).toContain("on(entity: 'sensor.temperature',");
       expect(content).toContain('TypedStateChangedEvent<');
+      // Entity ID literal should be the third type parameter
+      expect(content).toContain("'light.living_room'>) => void): () => void;");
       cleanup();
     });
 
@@ -438,6 +440,68 @@ describe('generateTypes()', () => {
       expect(typedGetIdx).toBeGreaterThan(-1);
       expect(fallbackGetIdx).toBeGreaterThan(typedGetIdx);
 
+      cleanup();
+    });
+
+    it('generates domain-level on() overloads', () => {
+      setup();
+      generateTypes(makeRegistryData(), outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      // Domain overloads for light and input_select
+      expect(content).toContain("on(domain: 'light',");
+      expect(content).toContain("on(domain: 'input_select',");
+      // Domain on() should use EntitiesInDomain for entity_id
+      expect(content).toContain("EntitiesInDomain<'light'>");
+      // Domain overloads appear after entity overloads but before string fallback
+      const domainOnIdx = content.indexOf("on(domain: 'light',");
+      const fallbackOnIdx = content.indexOf('on(entityOrDomain: string | string[],');
+      expect(domainOnIdx).toBeGreaterThan(-1);
+      expect(fallbackOnIdx).toBeGreaterThan(domainOnIdx);
+      cleanup();
+    });
+
+    it('generates typed array on() overload', () => {
+      setup();
+      generateTypes(makeRegistryData(), outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      expect(content).toContain('on<E extends HAEntityId>(entities: E[],');
+      // Should appear before string fallback
+      const arrayOnIdx = content.indexOf('on<E extends HAEntityId>(entities: E[],');
+      const fallbackOnIdx = content.indexOf('on(entityOrDomain: string | string[],');
+      expect(arrayOnIdx).toBeGreaterThan(-1);
+      expect(fallbackOnIdx).toBeGreaterThan(arrayOnIdx);
+      cleanup();
+    });
+
+    it('generates domain-level callService() overloads', () => {
+      setup();
+      generateTypes(makeRegistryData(), outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      // Domain callService for light (has services)
+      expect(content).toContain("entity: 'light', service: S,");
+      // No domain callService for sensor (no sensor services in test data)
+      expect(content).not.toContain("entity: 'sensor', service: S,");
+      // Domain overloads appear before string fallback
+      const domainCallIdx = content.indexOf("entity: 'light', service: S,");
+      const fallbackCallIdx = content.indexOf('callService(entity: string, service: string,');
+      expect(domainCallIdx).toBeGreaterThan(-1);
+      expect(fallbackCallIdx).toBeGreaterThan(domainCallIdx);
+      cleanup();
+    });
+
+    it('generates typed reactions() overload', () => {
+      setup();
+      generateTypes(makeRegistryData(), outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      // Typed reactions with mapped entity keys
+      expect(content).toContain('reactions<K extends HAEntityId>(rules: {');
+      expect(content).toContain("to?: HAEntityMap[E]['state']");
+      // String fallback reactions
+      expect(content).toContain('reactions(rules: Record<string, ReactionRule>): () => void;');
       cleanup();
     });
   });

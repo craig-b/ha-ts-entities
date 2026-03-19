@@ -336,8 +336,13 @@ export function generateTypes(data: HARegistryData, outputDir: string): TypeGenR
 
   // ---- Build typed HAClient overloads ----
   const onOverloads: string[] = [];
+  const domainOnOverloads: string[] = [];
   const getStateOverloads: string[] = [];
   const callServiceOverloads: string[] = [];
+  const domainCallServiceOverloads: string[] = [];
+
+  // Collect unique domains that have entities
+  const domainsWithEntities = new Set<string>();
 
   for (const entityId of entityIds) {
     const state = stateMap.get(entityId);
@@ -348,9 +353,11 @@ export function generateTypes(data: HARegistryData, outputDir: string): TypeGenR
     const attrsType = inferAttributesType(state.attributes);
     const escapedId = escapeQuotes(entityId);
 
-    // on() overload
+    domainsWithEntities.add(domain);
+
+    // on() overload — includes entity_id literal as third TypedStateChangedEvent param
     onOverloads.push(
-      `  on(entity: '${escapedId}', callback: (event: TypedStateChangedEvent<${stateType}, ${attrsType}>) => void): () => void;`,
+      `  on(entity: '${escapedId}', callback: (event: TypedStateChangedEvent<${stateType}, ${attrsType}, '${escapedId}'>) => void): () => void;`,
     );
 
     // getState() overload
@@ -363,6 +370,31 @@ export function generateTypes(data: HARegistryData, outputDir: string): TypeGenR
     if (domainServices && domainServices.size > 0) {
       callServiceOverloads.push(
         `  callService<S extends keyof HAEntityMap['${escapedId}']['services']>(entity: '${escapedId}', service: S, data?: HAEntityMap['${escapedId}']['services'][S]): Promise<void>;`,
+      );
+    }
+  }
+
+  // Build domain-level on() overloads — state is typed per domain, attributes are Record<string, unknown>
+  // entity_id narrows to EntitiesInDomain<D> for discriminated unions
+  for (const domain of domainsWithEntities) {
+    const escapedDomain = escapeQuotes(domain);
+    // Use the domain's shared state type (pick representative entity)
+    const repEntity = entityIds.find((id) => id.startsWith(`${domain}.`));
+    const repState = repEntity ? stateMap.get(repEntity) : undefined;
+    const domainStateType = repState ? inferStateType(domain, repState) : 'string';
+
+    domainOnOverloads.push(
+      `  on(domain: '${escapedDomain}', callback: (event: TypedStateChangedEvent<${domainStateType}, Record<string, unknown>, EntitiesInDomain<'${escapedDomain}'>>) => void): () => void;`,
+    );
+  }
+
+  // Build domain-level callService() overloads — target all entities in a domain
+  for (const domain of domainsWithEntities) {
+    const domainServices = servicesByDomain.get(domain);
+    if (domainServices && domainServices.size > 0) {
+      const escapedDomain = escapeQuotes(domain);
+      domainCallServiceOverloads.push(
+        `  callService<S extends keyof HAEntityMap[\`${escapedDomain}.\${string}\` & HAEntityId]['services']>(entity: '${escapedDomain}', service: S, data?: HAEntityMap[\`${escapedDomain}.\${string}\` & HAEntityId]['services'][S]): Promise<void>;`,
       );
     }
   }
@@ -389,14 +421,23 @@ export function generateTypes(data: HARegistryData, outputDir: string): TypeGenR
     `// Typed HAClient with per-entity overloads.`,
     `// String fallbacks appear LAST so TypeScript resolves typed overloads first.`,
     `interface HAClient extends HAClientBase {`,
-    `  // --- Typed on() overloads ---`,
+    `  // --- Typed on() overloads (per entity) ---`,
     ...onOverloads,
+    ``,
+    `  // --- Typed on() overloads (per domain) ---`,
+    ...domainOnOverloads,
+    ``,
+    `  // --- Typed on() with entity array ---`,
+    `  on<E extends HAEntityId>(entities: E[], callback: (event: TypedStateChangedEvent<HAEntityMap[E]['state'], HAEntityMap[E]['attributes'], E>) => void): () => void;`,
     ``,
     `  // --- String fallback on() (must be last) ---`,
     `  on(entityOrDomain: string | string[], callback: (event: StateChangedEvent) => void): () => void;`,
     ``,
-    `  // --- Typed callService() overloads (generic — service narrows via HAEntityMap) ---`,
+    `  // --- Typed callService() overloads (per entity) ---`,
     ...callServiceOverloads,
+    ``,
+    `  // --- Typed callService() overloads (per domain — targets all entities) ---`,
+    ...domainCallServiceOverloads,
     ``,
     `  // --- String fallback callService() (must be last) ---`,
     `  callService(entity: string, service: string, data?: Record<string, unknown>): Promise<void>;`,
@@ -406,6 +447,17 @@ export function generateTypes(data: HARegistryData, outputDir: string): TypeGenR
     ``,
     `  // --- String fallback getState() (must be last) ---`,
     `  getState(entityId: string): Promise<{ state: string; attributes: Record<string, unknown>; last_changed: string; last_updated: string; } | null>;`,
+    ``,
+    `  // --- Typed reactions() — entity IDs autocomplete, 'to' typed per entity ---`,
+    `  reactions<K extends HAEntityId>(rules: { [E in K]: {`,
+    `    to?: HAEntityMap[E]['state'];`,
+    `    when?: (event: StateChangedEvent) => boolean;`,
+    `    do: () => void | Promise<void>;`,
+    `    after?: number;`,
+    `  } }): () => void;`,
+    ``,
+    `  // --- String fallback reactions() (must be last) ---`,
+    `  reactions(rules: Record<string, ReactionRule>): () => void;`,
     `}`,
     ``,
   ].join('\n');
