@@ -67,8 +67,8 @@ export interface StateChangedEvent {
   timestamp: number;
 }
 
-export interface TypedStateChangedEvent<TState, TAttrs> {
-  entity_id: string;
+export interface TypedStateChangedEvent<TState, TAttrs, TEntityId extends string = string> {
+  entity_id: TEntityId;
   old_state: TState;
   new_state: TState;
   old_attributes: TAttrs;
@@ -112,6 +112,7 @@ export interface HAClient extends HAClientBase {
     last_changed: string;
     last_updated: string;
   } | null>;
+  reactions(rules: Record<string, ReactionRule>): () => void;
 }
 
 // ---- Entity context (bound as `this` in callbacks) ----
