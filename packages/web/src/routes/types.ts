@@ -58,6 +58,12 @@ export function createTypesRoutes(opts: TypesRouteOptions) {
         }
       }
 
+      // Also include globals.d.ts from the SDK package root
+      const globalsPath = path.join(sdkDist, '..', 'globals.d.ts');
+      if (fs.existsSync(globalsPath)) {
+        files['globals.d.ts'] = fs.readFileSync(globalsPath, 'utf-8');
+      }
+
       return c.json({ files });
     } catch {
       return c.json({ error: 'Failed to read SDK types' }, 500);

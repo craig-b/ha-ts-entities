@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import type { EntityDefinition, EntityFactory, ResolvedEntity } from '@ha-ts-entities/sdk';
+import type { EntityDefinition, EntityFactory, ResolvedEntity, HAClient } from '@ha-ts-entities/sdk';
 
 export interface LoadResult {
   entities: ResolvedEntity[];
@@ -10,6 +10,24 @@ export interface LoadResult {
 export interface LoadError {
   file: string;
   error: string;
+}
+
+/**
+ * Install SDK functions as globals so user scripts can use sensor(), light(), etc.
+ * without explicit imports. Call this before loading any user bundles.
+ */
+export async function installGlobals(haClient?: HAClient): Promise<void> {
+  const sdk = await import('@ha-ts-entities/sdk');
+  const g = globalThis as Record<string, unknown>;
+  g.sensor = sdk.sensor;
+  g.defineSwitch = sdk.defineSwitch;
+  g.light = sdk.light;
+  g.cover = sdk.cover;
+  g.climate = sdk.climate;
+  g.entityFactory = sdk.entityFactory;
+  if (haClient) {
+    g.ha = haClient;
+  }
 }
 
 /**

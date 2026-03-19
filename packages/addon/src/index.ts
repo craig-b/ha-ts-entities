@@ -132,7 +132,7 @@ async function main(): Promise<void> {
   try {
     log('Starting web server...');
     const { createServer } = await import('@ha-ts-entities/web');
-    const { BuildManager, HealthEntities, HAApiImpl } = await import('@ha-ts-entities/runtime');
+    const { BuildManager, HealthEntities, HAApiImpl, installGlobals } = await import('@ha-ts-entities/runtime');
     const { runBuild } = await import('@ha-ts-entities/build');
 
     let haApi: import('@ha-ts-entities/runtime').HAApiImpl | null = null;
@@ -140,6 +140,9 @@ async function main(): Promise<void> {
       haApi = new HAApiImpl(wsClient);
       await haApi.init();
     }
+
+    // Install SDK globals (sensor, light, ha, etc.) before any user scripts run
+    await installGlobals(haApi ?? undefined);
 
     let healthEntities: InstanceType<typeof HealthEntities> | null = null;
     if (mqttTransport) {

@@ -13,7 +13,7 @@ export type { HAApi, StateChangedEvent, StateChangedCallback, ReactionRule, Vali
 export { EntityLifecycleManager } from './lifecycle.js';
 export type { LifecycleLogger } from './lifecycle.js';
 
-export { loadBundles } from './loader.js';
+export { loadBundles, installGlobals } from './loader.js';
 export type { LoadResult, LoadError } from './loader.js';
 
 export { BuildManager } from './build-manager.js';

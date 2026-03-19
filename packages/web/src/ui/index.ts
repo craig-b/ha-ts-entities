@@ -807,10 +807,18 @@ const APP_JS = `
           'file:///node_modules/@ha-ts-entities/sdk/package.json'
         );
         Object.keys(files).forEach(function(filename) {
-          monaco.languages.typescript.typescriptDefaults.addExtraLib(
-            files[filename],
-            'file:///node_modules/@ha-ts-entities/sdk/dist/' + filename
-          );
+          if (filename === 'globals.d.ts') {
+            // Globals go at the package root so declare global works
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(
+              files[filename],
+              'file:///node_modules/@ha-ts-entities/sdk/globals.d.ts'
+            );
+          } else {
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(
+              files[filename],
+              'file:///node_modules/@ha-ts-entities/sdk/dist/' + filename
+            );
+          }
         });
       }
     }).catch(function() {});
