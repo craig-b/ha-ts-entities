@@ -55,7 +55,7 @@ export async function bundle(options: BundleOptions): Promise<BundleResult> {
   // Ensure output directory exists
   fs.mkdirSync(options.outputDir, { recursive: true });
 
-  const external = ['ts-entities', ...(options.external ?? [])];
+  const external = ['@ha-ts-entities/sdk', ...(options.external ?? [])];
 
   // Bundle each file independently
   for (const file of tsFiles) {
