@@ -147,7 +147,8 @@ export class HAApiImpl implements HAApi {
   }
 
   async callService(entity: string, service: string, data?: Record<string, unknown>): Promise<void> {
-    const domain = entity.split('.')[0];
+    const isEntity = entity.includes('.');
+    const domain = isEntity ? entity.split('.')[0] : entity;
     const serviceData = data ?? {};
 
     // Validate parameters using generated validators if available
@@ -163,12 +164,18 @@ export class HAApiImpl implements HAApi {
       }
     }
 
-    await this.wsClient.sendCommand('call_service', {
+    const payload: Record<string, unknown> = {
       domain,
       service,
       service_data: serviceData,
-      target: { entity_id: entity },
-    });
+    };
+    // Only include target when calling on a specific entity (has a dot).
+    // Domain-only calls (e.g., 'light') target all entities in the domain.
+    if (isEntity) {
+      payload.target = { entity_id: entity };
+    }
+
+    await this.wsClient.sendCommand('call_service', payload);
   }
 
   async getState(entityId: string): Promise<{
