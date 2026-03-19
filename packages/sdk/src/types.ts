@@ -94,6 +94,7 @@ export interface ReactionRule {
 // generated ha-registry.d.ts or by a fallback declaration appended at serve time.
 // This split ensures typed overloads appear BEFORE the string fallback in Monaco.
 export interface HAClientBase {
+  log: EntityLogger;
   getEntities(domain?: string): Promise<string[]>;
   fireEvent(eventType: string, eventData?: Record<string, unknown>): Promise<void>;
 }

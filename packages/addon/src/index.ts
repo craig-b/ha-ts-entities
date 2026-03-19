@@ -137,7 +137,8 @@ async function main(): Promise<void> {
 
     let haApi: import('@ha-ts-entities/runtime').HAApiImpl | null = null;
     if (wsClient) {
-      haApi = new HAApiImpl(wsClient);
+      const haLogger = logger.forEntity ? logger.forEntity('_ha', '_global') as typeof logger : logger;
+      haApi = new HAApiImpl(wsClient, haLogger);
       await haApi.init();
     }
 

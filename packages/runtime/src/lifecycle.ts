@@ -203,6 +203,7 @@ export class EntityLifecycleManager {
 
     // Build ha API — delegates to the shared HAClient, or stubs if unavailable
     const ha: HAClient = haClient ?? {
+      log: entityLogger,
       on() {
         entityLogger.warn('ha.on() unavailable — no WebSocket connection');
         return () => {};

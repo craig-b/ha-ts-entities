@@ -1,4 +1,4 @@
-import type { HAClientBase } from '@ha-ts-entities/sdk';
+import type { HAClientBase, EntityLogger } from '@ha-ts-entities/sdk';
 import type { HAWebSocketClient, HAEvent, HAStateChangedData, HAStateObject } from './ws-client.js';
 
 // ---- Event types ----
@@ -52,9 +52,11 @@ export class HAApiImpl implements HAApi {
   private reactionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private stateCache = new Map<string, HAStateObject>();
   private validators: ValidatorMap | null;
+  readonly log: EntityLogger;
 
-  constructor(wsClient: HAWebSocketClient, validators?: ValidatorMap | null) {
+  constructor(wsClient: HAWebSocketClient, logger: EntityLogger, validators?: ValidatorMap | null) {
     this.wsClient = wsClient;
+    this.log = logger;
     this.validators = validators ?? null;
   }
 

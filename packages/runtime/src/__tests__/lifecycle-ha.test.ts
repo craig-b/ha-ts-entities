@@ -35,6 +35,7 @@ function createMockHAClient(): HAClient & {
   fireEvent: ReturnType<typeof vi.fn>;
 } {
   return {
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     on: vi.fn(() => () => {}),
     callService: vi.fn(async () => {}),
     getState: vi.fn(async () => null),

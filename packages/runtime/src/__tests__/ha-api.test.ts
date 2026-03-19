@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { HAWebSocketClient, HAEvent } from '../ws-client.js';
+import type { EntityLogger } from '@ha-ts-entities/sdk';
 import { HAApiImpl } from '../ha-api.js';
+
+function createMockLogger(): EntityLogger {
+  return { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+}
 
 // ---- Mock WS Client ----
 
@@ -63,7 +68,7 @@ describe('HAApiImpl', () => {
 
   beforeEach(async () => {
     wsClient = createMockWSClient();
-    api = new HAApiImpl(wsClient);
+    api = new HAApiImpl(wsClient, createMockLogger());
     await api.init();
   });
 
@@ -198,7 +203,7 @@ describe('HAApiImpl', () => {
           },
         },
       };
-      const validatedApi = new HAApiImpl(wsClient, validators);
+      const validatedApi = new HAApiImpl(wsClient, createMockLogger(), validators);
       await validatedApi.init();
 
       // Valid call
@@ -226,7 +231,7 @@ describe('HAApiImpl', () => {
           brightness: vi.fn((v: unknown) => v),
         },
       };
-      const validatedApi = new HAApiImpl(wsClient, validators);
+      const validatedApi = new HAApiImpl(wsClient, createMockLogger(), validators);
       await validatedApi.init();
 
       // Call without brightness — validator should not be called
