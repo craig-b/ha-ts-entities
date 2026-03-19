@@ -68,11 +68,33 @@ export function createTypesRoutes(opts: TypesRouteOptions) {
         .filter(line => !line.startsWith('import ') && !line.startsWith('export '))
         .join('\n');
 
+      // Strip the HAClient interface from SDK types — it will be defined by
+      // either generated ha-registry.d.ts (with typed overloads) or the untyped
+      // fallback appended below. This ensures typed overloads appear before
+      // the string fallback in TypeScript's overload resolution order.
+      types = types.replace(
+        /\/\/ Full client interface[\s\S]*?^interface HAClient extends HAClientBase \{[\s\S]*?^\}/m,
+        '',
+      );
+
+      // Check if generated registry types exist
+      const registryPath = path.join(opts.generatedDir, 'ha-registry.d.ts');
+      const hasGeneratedTypes = fs.existsSync(registryPath);
+
+      // When no generated types, append an untyped HAClient fallback
+      const untypedFallback = hasGeneratedTypes ? '' : `
+interface HAClient extends HAClientBase {
+  on(entityOrDomain: string | string[], callback: (event: StateChangedEvent) => void): () => void;
+  callService(entity: string, service: string, data?: Record<string, unknown>): Promise<void>;
+  getState(entityId: string): Promise<{ state: string; attributes: Record<string, unknown>; last_changed: string; last_updated: string; } | null>;
+}
+`;
+
       // Build a single self-contained declaration
       const declaration = `// TS Entities SDK types (auto-generated)
 ${types}
 ${optionInterfaces}
-
+${untypedFallback}
 declare function sensor(options: SensorOptions): SensorDefinition;
 declare function defineSwitch(options: SwitchOptions): SwitchDefinition;
 declare function light(options: LightOptions): LightDefinition;

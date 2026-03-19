@@ -256,10 +256,15 @@ describe('Type generation integration', () => {
     expect(dts).toContain('toggle');
     expect(dts).toContain('set_temperature');
 
-    // Utility types
-    expect(dts).toContain('export type HAEntityId = keyof HAEntityMap');
-    expect(dts).toContain('export type HADomain');
-    expect(dts).toContain('export type EntitiesInDomain');
+    // Utility types (ambient — no export keyword)
+    expect(dts).toContain('type HAEntityId = keyof HAEntityMap');
+    expect(dts).toContain('type HADomain');
+    expect(dts).toContain('type EntitiesInDomain');
+
+    // Typed HAClient interface
+    expect(dts).toContain('interface HAClient extends HAClientBase');
+    expect(dts).not.toMatch(/^import\b/m);
+    expect(dts).not.toMatch(/^export\b/m);
 
     cleanup();
   });

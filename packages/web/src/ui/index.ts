@@ -807,7 +807,7 @@ const APP_JS = `
       }
     }).catch(function() {});
 
-    // Load generated HA registry types
+    // Load generated HA registry types (ambient declarations, no import/export)
     api('GET', '/api/types/status').then(function(typesStatus) {
       if (typesStatus.generated) {
         return api('GET', '/api/files/.generated/ha-registry.d.ts');
@@ -815,9 +815,13 @@ const APP_JS = `
       return null;
     }).then(function(registryDts) {
       if (registryDts && registryDts.content) {
+        // Strip any import/export lines (belt-and-suspenders — generated file should be ambient)
+        var content = registryDts.content
+          .replace(/^import\\b.*$/gm, '')
+          .replace(/^export\\b.*$/gm, '');
         monaco.languages.typescript.typescriptDefaults.addExtraLib(
-          registryDts.content,
-          'file:///node_modules/@types/ha-registry/index.d.ts'
+          content,
+          'ts:ha-registry/index.d.ts'
         );
       }
     }).catch(function() {});

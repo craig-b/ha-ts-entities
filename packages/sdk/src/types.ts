@@ -67,6 +67,15 @@ export interface StateChangedEvent {
   timestamp: number;
 }
 
+export interface TypedStateChangedEvent<TState, TAttrs> {
+  entity_id: string;
+  old_state: TState;
+  new_state: TState;
+  old_attributes: TAttrs;
+  new_attributes: TAttrs;
+  timestamp: number;
+}
+
 export type StateChangedCallback = (event: StateChangedEvent) => void;
 
 // ---- Reaction rule for declarative reactions ----
@@ -78,9 +87,22 @@ export interface ReactionRule {
   after?: number;
 }
 
-// ---- HA API interface (available on EntityContext.ha) ----
+// ---- HA API interfaces ----
 
-export interface HAClient {
+// Base interface — only methods that don't need registry-generated types.
+// The full HAClient (with on/callService/getState) is defined either by
+// generated ha-registry.d.ts or by a fallback declaration appended at serve time.
+// This split ensures typed overloads appear BEFORE the string fallback in Monaco.
+export interface HAClientBase {
+  getEntities(domain?: string): Promise<string[]>;
+  fireEvent(eventType: string, eventData?: Record<string, unknown>): Promise<void>;
+}
+
+// Full client interface used at compile time in the monorepo.
+// For Monaco, this interface is stripped from the SDK declaration and replaced
+// by either generated typed overloads or an untyped fallback — both extending
+// HAClientBase with string fallbacks appearing last.
+export interface HAClient extends HAClientBase {
   on(entityOrDomain: string | string[], callback: StateChangedCallback): () => void;
   callService(entity: string, service: string, data?: Record<string, unknown>): Promise<void>;
   getState(entityId: string): Promise<{
@@ -89,8 +111,6 @@ export interface HAClient {
     last_changed: string;
     last_updated: string;
   } | null>;
-  getEntities(domain?: string): Promise<string[]>;
-  fireEvent(eventType: string, eventData?: Record<string, unknown>): Promise<void>;
 }
 
 // ---- Entity context (bound as `this` in callbacks) ----

@@ -1,3 +1,4 @@
+import type { HAClientBase } from '@ha-ts-entities/sdk';
 import type { HAWebSocketClient, HAEvent, HAStateChangedData, HAStateObject } from './ws-client.js';
 
 // ---- Event types ----
@@ -28,7 +29,7 @@ export interface ReactionRule {
 
 // ---- HA API interface ----
 
-export interface HAApi {
+export interface HAApi extends HAClientBase {
   on(entityOrDomain: string | string[], callback: StateChangedCallback): () => void;
   callService(entity: string, service: string, data?: Record<string, unknown>): Promise<void>;
   getState(entityId: string): Promise<{
@@ -37,8 +38,6 @@ export interface HAApi {
     last_changed: string;
     last_updated: string;
   } | null>;
-  getEntities(domain?: string): Promise<string[]>;
-  fireEvent(eventType: string, eventData?: Record<string, unknown>): Promise<void>;
 }
 
 // ---- Implementation ----

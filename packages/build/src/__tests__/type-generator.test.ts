@@ -349,14 +349,17 @@ describe('generateTypes()', () => {
       cleanup();
     });
 
-    it('exports utility types HAEntityId, HADomain, EntitiesInDomain', () => {
+    it('declares ambient utility types (no export keyword)', () => {
       setup();
       generateTypes(makeRegistryData(), outputDir);
       const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
 
-      expect(content).toContain('export type HAEntityId = keyof HAEntityMap');
-      expect(content).toContain('export type HADomain =');
-      expect(content).toContain('export type EntitiesInDomain');
+      expect(content).toContain('type HAEntityId = keyof HAEntityMap');
+      expect(content).toContain('type HADomain =');
+      expect(content).toContain('type EntitiesInDomain');
+      // Must be ambient — no import or export keywords
+      expect(content).not.toMatch(/^import\b/m);
+      expect(content).not.toMatch(/^export\b/m);
       cleanup();
     });
 
@@ -366,6 +369,72 @@ describe('generateTypes()', () => {
       const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
 
       expect(content).toContain('HA Version: 2024.1.0');
+      cleanup();
+    });
+
+    it('generates typed HAClient interface extending HAClientBase', () => {
+      setup();
+      generateTypes(makeRegistryData(), outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      expect(content).toContain('interface HAClient extends HAClientBase');
+      cleanup();
+    });
+
+    it('generates typed on() overloads for each entity', () => {
+      setup();
+      generateTypes(makeRegistryData(), outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      expect(content).toContain("on(entity: 'light.living_room',");
+      expect(content).toContain("on(entity: 'sensor.temperature',");
+      expect(content).toContain('TypedStateChangedEvent<');
+      cleanup();
+    });
+
+    it('generates typed callService() overloads per entity+service', () => {
+      setup();
+      generateTypes(makeRegistryData(), outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      expect(content).toContain("callService(entity: 'light.living_room', service: 'turn_on',");
+      expect(content).toContain("callService(entity: 'light.living_room', service: 'turn_off',");
+      cleanup();
+    });
+
+    it('generates typed getState() overloads for each entity', () => {
+      setup();
+      generateTypes(makeRegistryData(), outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      expect(content).toContain("getState(entityId: 'light.living_room'):");
+      expect(content).toContain("getState(entityId: 'sensor.temperature'):");
+      cleanup();
+    });
+
+    it('places string fallback overloads after typed overloads', () => {
+      setup();
+      generateTypes(makeRegistryData(), outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      // Typed on() overloads must appear before string fallback
+      const typedOnIdx = content.indexOf("on(entity: 'light.living_room',");
+      const fallbackOnIdx = content.indexOf('on(entityOrDomain: string | string[],');
+      expect(typedOnIdx).toBeGreaterThan(-1);
+      expect(fallbackOnIdx).toBeGreaterThan(typedOnIdx);
+
+      // Typed callService() overloads must appear before string fallback
+      const typedCallIdx = content.indexOf("callService(entity: 'light.living_room',");
+      const fallbackCallIdx = content.indexOf('callService(entity: string, service: string,');
+      expect(typedCallIdx).toBeGreaterThan(-1);
+      expect(fallbackCallIdx).toBeGreaterThan(typedCallIdx);
+
+      // Typed getState() overloads must appear before string fallback
+      const typedGetIdx = content.indexOf("getState(entityId: 'light.living_room'):");
+      const fallbackGetIdx = content.indexOf('getState(entityId: string):');
+      expect(typedGetIdx).toBeGreaterThan(-1);
+      expect(fallbackGetIdx).toBeGreaterThan(typedGetIdx);
+
       cleanup();
     });
   });
@@ -448,7 +517,7 @@ describe('generateTypes()', () => {
       expect(result.serviceCount).toBe(0);
 
       const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
-      expect(content).toContain('export type HAEntityMap = {');
+      expect(content).toContain('type HAEntityMap = {');
       cleanup();
     });
 
