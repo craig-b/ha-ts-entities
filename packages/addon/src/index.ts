@@ -117,6 +117,8 @@ async function main(): Promise<void> {
   }
 
   // Step 3: HA WebSocket
+  // Late-bound event handler — set after HAApiImpl is created
+  let handleHAEvent: ((subId: number, event: import('@ha-ts-entities/runtime').HAEvent) => void) | null = null;
   let wsClient: import('@ha-ts-entities/runtime').HAWebSocketClient | null = null;
   try {
     log('Connecting HA WebSocket...');
@@ -124,6 +126,7 @@ async function main(): Promise<void> {
     wsClient = new HAWebSocketClient({
       url: 'ws://supervisor/core/websocket',
       token: process.env.SUPERVISOR_TOKEN!,
+      onEvent: (subId, event) => handleHAEvent?.(subId, event),
     });
     await wsClient.connect();
     log(`WebSocket connected (HA ${wsClient.getHAVersion()})`);
@@ -142,6 +145,8 @@ async function main(): Promise<void> {
     if (wsClient) {
       const haLogger = logger.forEntity ? logger.forEntity('_ha', '_global') as typeof logger : logger;
       haApi = new HAApiImpl(wsClient, haLogger);
+      // Wire up WebSocket events → HAApiImpl for ha.on()/reactions()
+      handleHAEvent = (subId, event) => haApi!.handleEvent(subId, event);
       await haApi.init();
     }
 
