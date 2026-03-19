@@ -644,4 +644,60 @@ describe('generateTypes()', () => {
       cleanup();
     });
   });
+
+  describe('script service filtering', () => {
+    it('only includes generic services and own object_id service per script entity', () => {
+      const data = makeRegistryData({
+        services: {
+          script: {
+            reload: { fields: {} },
+            turn_on: { fields: {} },
+            turn_off: { fields: {} },
+            toggle: { fields: {} },
+            announce: { fields: { message: { required: true, selector: { text: {} } } } },
+            launch_youtube: { fields: { url: { required: false, selector: { text: {} } } } },
+          },
+        },
+        states: [
+          {
+            entity_id: 'script.announce',
+            state: 'off',
+            attributes: { friendly_name: 'Announce' },
+            last_changed: '', last_updated: '',
+          },
+          {
+            entity_id: 'script.launch_youtube',
+            state: 'off',
+            attributes: { friendly_name: 'Launch YouTube' },
+            last_changed: '', last_updated: '',
+          },
+        ],
+      });
+
+      setup();
+      const result = generateTypes(data, outputDir);
+      expect(result.success).toBe(true);
+
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      // script.announce should have reload, turn_on, turn_off, toggle, announce
+      // but NOT launch_youtube
+      const announceMatch = content.match(/'script\.announce':\s*\{[\s\S]*?services:\s*\{([\s\S]*?)\};\s*\};/);
+      expect(announceMatch).toBeTruthy();
+      const announceServices = announceMatch![1];
+      expect(announceServices).toContain('announce:');
+      expect(announceServices).toContain('turn_on:');
+      expect(announceServices).not.toContain('launch_youtube:');
+
+      // script.launch_youtube should have generic + launch_youtube but NOT announce
+      const ytMatch = content.match(/'script\.launch_youtube':\s*\{[\s\S]*?services:\s*\{([\s\S]*?)\};\s*\};/);
+      expect(ytMatch).toBeTruthy();
+      const ytServices = ytMatch![1];
+      expect(ytServices).toContain('launch_youtube:');
+      expect(ytServices).toContain('turn_on:');
+      expect(ytServices).not.toContain('announce:');
+
+      cleanup();  // uses outer cleanup()
+    });
+  });
 });

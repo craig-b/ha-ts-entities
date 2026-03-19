@@ -321,7 +321,7 @@ export function generateTypes(data: HARegistryData, outputDir: string): TypeGenR
     // Determine services type for this entity's domain
     const domainServices = servicesByDomain.get(domain);
     const servicesType = domainServices
-      ? generateServicesType(domain, domainServices, entityIds, validatorEntries)
+      ? generateServicesType(domain, domainServices, entityIds, validatorEntries, entityId)
       : '{}';
 
     entityMapEntries.push(
@@ -611,15 +611,28 @@ function inferValueType(value: unknown): string {
   return 'unknown';
 }
 
+/** Generic script services that apply to all script entities. */
+const GENERIC_SCRIPT_SERVICES = new Set(['reload', 'turn_on', 'turn_off', 'toggle']);
+
 function generateServicesType(
   domain: string,
   services: Map<string, HAService>,
   entityIds: string[],
   validatorEntries: string[],
+  entityId?: string,
 ): string {
   const svcFields: string[] = [];
 
+  // For the script domain, each entity only gets generic services + its own
+  // object_id service (e.g. script.announce → 'announce')
+  const objectId = entityId ? entityId.split('.')[1] : undefined;
+
   for (const [serviceName, service] of services) {
+    if (domain === 'script' && objectId) {
+      if (!GENERIC_SCRIPT_SERVICES.has(serviceName) && serviceName !== objectId) {
+        continue;
+      }
+    }
     const fields: string[] = [];
     const validatorFields: string[] = [];
 
