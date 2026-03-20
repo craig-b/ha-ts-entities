@@ -94,8 +94,9 @@ async function loadSingleBundle(
   filePath: string,
   bundleDir: string,
 ): Promise<{ entities: ResolvedEntity[]; devices: ResolvedDevice[] }> {
-  // Dynamic import — file:// URL required for absolute paths on all platforms
-  const fileUrl = `file://${filePath}`;
+  // Dynamic import — file:// URL required for absolute paths on all platforms.
+  // Append a cache-busting query string so Node returns fresh modules on redeploy.
+  const fileUrl = `file://${filePath}?t=${Date.now()}`;
   const mod = await import(fileUrl);
 
   const sourceFile = path.relative(bundleDir, filePath).replace(/\.js$/, '.ts');
