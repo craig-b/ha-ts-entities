@@ -242,6 +242,72 @@ export const lamp = light({
 });
 ```
 
+### Device
+
+Groups multiple entities under a shared lifecycle with one `init()`, coordinated polling, and shared data. Entity handles provide typed `update()`. This avoids the problem of independent sensors each fetching the same API or racing against shared state.
+
+```typescript
+// weather.ts — 12 sensors from one API, one fetch every 10 minutes
+
+const API_URL =
+  'https://api.open-meteo.com/v1/forecast?latitude=YOUR_LAT&longitude=YOUR_LON' +
+  '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,' +
+  'cloud_cover,precipitation,wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl' +
+  '&daily=temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_probability_max' +
+  '&timezone=auto&forecast_days=1';
+
+const WMO: Record<number, string> = {
+  0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+  45: 'Fog', 48: 'Rime fog',
+  51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle',
+  61: 'Light rain', 63: 'Rain', 65: 'Heavy rain',
+  71: 'Light snow', 73: 'Snow', 75: 'Heavy snow',
+  80: 'Light showers', 81: 'Showers', 82: 'Heavy showers',
+  95: 'Thunderstorm', 96: 'Thunderstorm with hail',
+};
+
+export default device({
+  id: 'open_meteo',
+  name: 'Open-Meteo',
+  entities: {
+    condition:  sensor({ id: 'weather_condition',   name: 'Condition',   config: {} }),
+    temp:       sensor({ id: 'weather_temperature', name: 'Temperature', config: { device_class: 'temperature', unit_of_measurement: '°C', state_class: 'measurement' } }),
+    feelsLike:  sensor({ id: 'weather_feels_like',  name: 'Feels Like',  config: { device_class: 'temperature', unit_of_measurement: '°C', state_class: 'measurement' } }),
+    humidity:   sensor({ id: 'weather_humidity',     name: 'Humidity',    config: { device_class: 'humidity', unit_of_measurement: '%', state_class: 'measurement' } }),
+    wind:       sensor({ id: 'weather_wind_speed',   name: 'Wind Speed',  config: { device_class: 'wind_speed', unit_of_measurement: 'km/h', state_class: 'measurement' } }),
+    gusts:      sensor({ id: 'weather_wind_gusts',   name: 'Wind Gusts',  config: { device_class: 'wind_speed', unit_of_measurement: 'km/h', state_class: 'measurement' } }),
+    pressure:   sensor({ id: 'weather_pressure',     name: 'Pressure',    config: { device_class: 'pressure', unit_of_measurement: 'hPa', state_class: 'measurement' } }),
+    cloud:      sensor({ id: 'weather_cloud_cover',  name: 'Cloud Cover', config: { unit_of_measurement: '%', state_class: 'measurement' } }),
+    todayHigh:  sensor({ id: 'weather_today_high',   name: 'Today High',  config: { device_class: 'temperature', unit_of_measurement: '°C' } }),
+    todayLow:   sensor({ id: 'weather_today_low',    name: 'Today Low',   config: { device_class: 'temperature', unit_of_measurement: '°C' } }),
+    uvIndex:    sensor({ id: 'weather_uv_index',     name: 'UV Index',    config: { state_class: 'measurement' } }),
+    rainChance: sensor({ id: 'weather_rain_chance',  name: 'Rain Chance', config: { unit_of_measurement: '%' } }),
+  },
+  init() {
+    this.poll(async () => {
+      const data = await this.fetch(API_URL).then(r => r.json());
+      const c = data.current;
+      const d = data.daily;
+
+      this.entities.condition.update(WMO[c.weather_code] ?? 'Unknown');
+      this.entities.temp.update(c.temperature_2m);
+      this.entities.feelsLike.update(c.apparent_temperature);
+      this.entities.humidity.update(c.relative_humidity_2m);
+      this.entities.wind.update(c.wind_speed_10m);
+      this.entities.gusts.update(c.wind_gusts_10m);
+      this.entities.pressure.update(c.pressure_msl);
+      this.entities.cloud.update(c.cloud_cover);
+      this.entities.todayHigh.update(d.temperature_2m_max[0]);
+      this.entities.todayLow.update(d.temperature_2m_min[0]);
+      this.entities.uvIndex.update(d.uv_index_max[0]);
+      this.entities.rainChance.update(d.precipitation_probability_max[0]);
+    }, { interval: 600_000 });
+  },
+});
+```
+
+Compare this with the [manual device grouping](#device-grouping) approach — each sensor there has its own `init()` and `poll()`, so either every sensor fetches the API independently, or they share a module-level cache variable that races against poll timing. `device()` solves both problems: one fetch, one poll, all updates in one place.
+
 ## Reactive Patterns
 
 ### Subscribing to State Changes
