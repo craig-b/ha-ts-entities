@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import type { EntityDefinition, EntityFactory, ResolvedEntity, HAClient } from '@ha-ts-entities/sdk';
+import type { EntityDefinition, EntityFactory, ResolvedEntity, HAClient, EntityLogger } from '@ha-ts-entities/sdk';
 
 export interface LoadResult {
   entities: ResolvedEntity[];
@@ -16,7 +16,7 @@ export interface LoadError {
  * Install SDK functions as globals so user scripts can use sensor(), light(), etc.
  * without explicit imports. Call this before loading any user bundles.
  */
-export async function installGlobals(haClient?: HAClient): Promise<void> {
+export async function installGlobals(haClient?: HAClient, logger?: EntityLogger): Promise<void> {
   const sdk = await import('@ha-ts-entities/sdk');
   const g = globalThis as Record<string, unknown>;
   g.sensor = sdk.sensor;
@@ -25,8 +25,25 @@ export async function installGlobals(haClient?: HAClient): Promise<void> {
   g.cover = sdk.cover;
   g.climate = sdk.climate;
   g.entityFactory = sdk.entityFactory;
+
+  // Always provide ha global — with full client or stub with working log
+  const noopLogger: EntityLogger = {
+    debug() {}, info() {}, warn() {}, error() {},
+  };
   if (haClient) {
     g.ha = haClient;
+  } else {
+    const stubLog = logger ?? noopLogger;
+    g.ha = {
+      log: stubLog,
+      on() { stubLog.warn('ha.on() unavailable — no WebSocket connection'); return () => {}; },
+      async callService() { stubLog.warn('ha.callService() unavailable — no WebSocket connection'); },
+      async getState() { stubLog.warn('ha.getState() unavailable — no WebSocket connection'); return null; },
+      async getEntities() { stubLog.warn('ha.getEntities() unavailable — no WebSocket connection'); return []; },
+      async fireEvent() { stubLog.warn('ha.fireEvent() unavailable — no WebSocket connection'); },
+      friendlyName(entityId: string) { return entityId; },
+      reactions() { stubLog.warn('ha.reactions() unavailable — no WebSocket connection'); return () => {}; },
+    } satisfies HAClient;
   }
 }
 

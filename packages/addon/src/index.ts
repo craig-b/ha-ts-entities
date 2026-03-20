@@ -141,9 +141,9 @@ async function main(): Promise<void> {
     const { BuildManager, HealthEntities, HAApiImpl, installGlobals } = await import('@ha-ts-entities/runtime');
     const { runBuild } = await import('@ha-ts-entities/build');
 
+    const haLogger = logger.forEntity ? logger.forEntity('_ha', '_global') as typeof logger : logger;
     let haApi: import('@ha-ts-entities/runtime').HAApiImpl | null = null;
     if (wsClient) {
-      const haLogger = logger.forEntity ? logger.forEntity('_ha', '_global') as typeof logger : logger;
       haApi = new HAApiImpl(wsClient, haLogger);
       // Wire up WebSocket events → HAApiImpl for ha.on()/reactions()
       handleHAEvent = (subId, event) => haApi!.handleEvent(subId, event);
@@ -151,7 +151,7 @@ async function main(): Promise<void> {
     }
 
     // Install SDK globals (sensor, light, ha, etc.) before any user scripts run
-    await installGlobals(haApi ?? undefined);
+    await installGlobals(haApi ?? undefined, haLogger);
 
     let healthEntities: InstanceType<typeof HealthEntities> | null = null;
     if (mqttTransport) {
