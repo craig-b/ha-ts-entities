@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EntityLifecycleManager } from '../lifecycle.js';
 import type { Transport } from '../transport.js';
-import type { HAClient, ResolvedEntity, SensorDefinition } from '@ha-ts-entities/sdk';
+import type { ResolvedEntity, SensorDefinition } from '@ha-ts-entities/sdk';
+import type { HAClient } from '../ha-api.js';
 
 function createMockTransport(): Transport & {
   register: ReturnType<typeof vi.fn>;

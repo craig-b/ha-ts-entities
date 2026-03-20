@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import type { EntityDefinition, EntityFactory, ResolvedEntity, HAClient, EntityLogger } from '@ha-ts-entities/sdk';
+import type { EntityDefinition, EntityFactory, ResolvedEntity, EntityLogger } from '@ha-ts-entities/sdk';
+import type { HAClient } from './ha-api.js';
 
 export interface LoadResult {
   entities: ResolvedEntity[];

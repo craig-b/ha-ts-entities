@@ -38,7 +38,14 @@ export interface HAApi extends HAClientBase {
     last_changed: string;
     last_updated: string;
   } | null>;
+  reactions(rules: Record<string, ReactionRule>): () => void;
 }
+
+/**
+ * Full HA client type used by the runtime. This is the string-typed version
+ * used internally — typed overloads only exist in generated .d.ts for Monaco.
+ */
+export type HAClient = HAApi;
 
 // ---- Implementation ----
 

@@ -3,7 +3,7 @@ import type { LifecycleLogger, RawMqttAccess } from './lifecycle.js';
 import { EntityLifecycleManager } from './lifecycle.js';
 import { loadBundles } from './loader.js';
 import type { Transport } from './transport.js';
-import type { HAClient } from '@ha-ts-entities/sdk';
+import type { HAClient } from './ha-api.js';
 
 export interface BuildDeployOptions {
   /** Directory containing bundled .js files */

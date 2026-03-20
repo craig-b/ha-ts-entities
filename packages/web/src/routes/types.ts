@@ -68,15 +68,6 @@ export function createTypesRoutes(opts: TypesRouteOptions) {
         .filter(line => !line.startsWith('import ') && !line.startsWith('export '))
         .join('\n');
 
-      // Strip the HAClient interface from SDK types — it will be defined by
-      // either generated ha-registry.d.ts (with typed overloads) or the untyped
-      // fallback appended below. This ensures typed overloads appear before
-      // the string fallback in TypeScript's overload resolution order.
-      types = types.replace(
-        /\/\/ Full client interface[\s\S]*?^interface HAClient extends HAClientBase \{[\s\S]*?^\}/m,
-        '',
-      );
-
       // Check if generated registry types exist
       const registryPath = path.join(opts.generatedDir, 'ha-registry.d.ts');
       const hasGeneratedTypes = fs.existsSync(registryPath);

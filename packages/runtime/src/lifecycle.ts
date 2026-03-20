@@ -2,9 +2,9 @@ import type {
   EntityContext,
   EntityDefinition,
   EntityLogger,
-  HAClient,
   ResolvedEntity,
 } from '@ha-ts-entities/sdk';
+import type { HAClient } from './ha-api.js';
 import type { Transport } from './transport.js';
 
 export interface LifecycleLogger {

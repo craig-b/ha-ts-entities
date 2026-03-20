@@ -197,85 +197,10 @@ export interface HAClientBase {
   friendlyName(entityId: string): string;
 }
 
-// Full client interface used at compile time in the monorepo.
-// For Monaco, this interface is stripped from the SDK declaration and replaced
-// by either generated typed overloads or an untyped fallback — both extending
-// HAClientBase with string fallbacks appearing last.
-/**
- * Full Home Assistant client API available as the `ha` global.
- * Provides entity state subscriptions, service calls, state queries, and declarative reactions.
- *
- * When generated types are available, methods have typed overloads with per-entity
- * autocomplete for entity IDs, service names, and data parameters.
- */
-export interface HAClient extends HAClientBase {
-  /**
-   * Subscribe to state changes for an entity, domain, or array of entities.
-   * @param entityOrDomain - Entity ID (e.g. `'light.kitchen'`), domain (e.g. `'light'`), or array of IDs.
-   * @param callback - Called each time the entity's state changes.
-   * @returns Unsubscribe function — call it to stop receiving events.
-   *
-   * @example
-   * ```ts
-   * const unsub = ha.on('light.kitchen', (event) => {
-   *   console.log(`Kitchen light is now ${event.new_state}`);
-   * });
-   * // Later: unsub();
-   * ```
-   */
-  on(entityOrDomain: string | string[], callback: StateChangedCallback): () => void;
-  /**
-   * Call a Home Assistant service on an entity or domain.
-   * @param entity - Target entity ID (e.g. `'light.kitchen'`) or domain (e.g. `'light'` for all).
-   * @param service - Service name (e.g. `'turn_on'`, `'toggle'`).
-   * @param data - Optional service data (e.g. `{ brightness: 200 }`).
-   *
-   * @example
-   * ```ts
-   * await ha.callService('light.kitchen', 'turn_on', { brightness: 200 });
-   * ```
-   */
-  callService(entity: string, service: string, data?: Record<string, unknown>): Promise<void>;
-  /**
-   * Get the current state of a Home Assistant entity.
-   * @param entityId - Entity ID to query (e.g. `'sensor.temperature'`).
-   * @returns State object with state value, attributes, and timestamps, or `null` if not found.
-   *
-   * @example
-   * ```ts
-   * const state = await ha.getState('sensor.temperature');
-   * console.log(state?.state); // '22.5'
-   * ```
-   */
-  getState(entityId: string): Promise<{
-    state: string;
-    attributes: Record<string, unknown>;
-    last_changed: string;
-    last_updated: string;
-  } | null>;
-  /**
-   * Set up declarative reaction rules that trigger actions on state changes.
-   * Supports delayed reactions with automatic cancellation when state changes again.
-   * @param rules - Map of entity IDs to reaction rules.
-   * @returns Cleanup function that removes all listeners and cancels pending timers.
-   *
-   * @example
-   * ```ts
-   * const cleanup = ha.reactions({
-   *   'binary_sensor.motion': {
-   *     to: 'on',
-   *     do: () => ha.callService('light.hallway', 'turn_on'),
-   *   },
-   *   'switch.garage_door': {
-   *     to: 'on',
-   *     after: 300000, // 5 minutes
-   *     do: () => ha.callService('switch.garage_door', 'turn_off'),
-   *   },
-   * });
-   * ```
-   */
-  reactions(rules: Record<string, ReactionRule>): () => void;
-}
+// HAClient is NOT defined in the SDK — it comes from either:
+// 1. Generated ha-registry.d.ts (with typed per-entity overloads)
+// 2. Untyped fallback appended by the web server when no generated types exist
+// This ensures typed overloads always take priority in TypeScript's resolution order.
 
 /**
  * Context object bound as `this` inside entity `init()`, `destroy()`, and `onCommand()` callbacks.
@@ -330,7 +255,7 @@ export interface EntityContext<TState = unknown> {
   /** Standard `fetch()` API for making HTTP requests from entity code. */
   fetch: typeof globalThis.fetch;
   /** Home Assistant client for subscribing to state changes, calling services, and more. */
-  ha: HAClient;
+  ha: HAClientBase;
   /** Direct MQTT publish/subscribe access. */
   mqtt: {
     /** Publish a message to an MQTT topic. */
