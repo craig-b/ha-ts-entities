@@ -120,6 +120,17 @@ declare function climate(options: ClimateOptions): ClimateDefinition;
 declare function entityFactory(factory: () => EntityDefinition[] | Promise<EntityDefinition[]>): EntityFactory;
 /** Home Assistant client API — subscribe to state changes, call services, query state, and set up reactions. */
 declare const ha: HAClient;
+
+// Override Console to guide users toward the structured logger.
+// @deprecated renders as strikethrough in Monaco with a hover hint.
+interface Console {
+  /** @deprecated Use \`this.log.info()\` or \`ha.log.info()\` — console.log is not captured in the log viewer. */
+  log(...args: unknown[]): void;
+  /** @deprecated Use \`this.log.warn()\` or \`ha.log.warn()\` — console.warn is not captured in the log viewer. */
+  warn(...args: unknown[]): void;
+  /** @deprecated Use \`this.log.error()\` or \`ha.log.error()\` — console.error is not captured in the log viewer. */
+  error(...args: unknown[]): void;
+}
 `;
 
       return c.json({ declaration });
