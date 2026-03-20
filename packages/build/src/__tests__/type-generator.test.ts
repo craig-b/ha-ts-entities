@@ -417,28 +417,21 @@ describe('generateTypes()', () => {
       cleanup();
     });
 
-    it('places string fallback overloads after typed overloads', () => {
+    it('does not include string fallback overloads', () => {
       setup();
       generateTypes(makeRegistryData(), outputDir);
       const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
 
-      // Typed on() overloads must appear before string fallback
-      const typedOnIdx = content.indexOf("on(entity: 'light.living_room',");
-      const fallbackOnIdx = content.indexOf('on(entityOrDomain: string | string[],');
-      expect(typedOnIdx).toBeGreaterThan(-1);
-      expect(fallbackOnIdx).toBeGreaterThan(typedOnIdx);
+      // Typed overloads exist
+      expect(content).toContain("on(entity: 'light.living_room',");
+      expect(content).toContain("callService<S extends keyof HAEntityMap['light.living_room']");
+      expect(content).toContain("getState(entityId: 'light.living_room'):");
 
-      // Typed callService() overloads must appear before string fallback
-      const typedCallIdx = content.indexOf("callService<S extends keyof HAEntityMap['light.living_room']");
-      const fallbackCallIdx = content.indexOf('callService(entity: string, service: string,');
-      expect(typedCallIdx).toBeGreaterThan(-1);
-      expect(fallbackCallIdx).toBeGreaterThan(typedCallIdx);
-
-      // Typed getState() overloads must appear before string fallback
-      const typedGetIdx = content.indexOf("getState(entityId: 'light.living_room'):");
-      const fallbackGetIdx = content.indexOf('getState(entityId: string):');
-      expect(typedGetIdx).toBeGreaterThan(-1);
-      expect(fallbackGetIdx).toBeGreaterThan(typedGetIdx);
+      // No string fallbacks
+      expect(content).not.toContain('on(entityOrDomain: string | string[],');
+      expect(content).not.toContain('callService(entity: string, service: string,');
+      expect(content).not.toContain('getState(entityId: string):');
+      expect(content).not.toContain('reactions(rules: Record<string, ReactionRule>)');
 
       cleanup();
     });
@@ -453,11 +446,6 @@ describe('generateTypes()', () => {
       expect(content).toContain("on(domain: 'input_select',");
       // Domain on() should use EntitiesInDomain for entity_id
       expect(content).toContain("EntitiesInDomain<'light'>");
-      // Domain overloads appear after entity overloads but before string fallback
-      const domainOnIdx = content.indexOf("on(domain: 'light',");
-      const fallbackOnIdx = content.indexOf('on(entityOrDomain: string | string[],');
-      expect(domainOnIdx).toBeGreaterThan(-1);
-      expect(fallbackOnIdx).toBeGreaterThan(domainOnIdx);
       cleanup();
     });
 
@@ -467,11 +455,6 @@ describe('generateTypes()', () => {
       const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
 
       expect(content).toContain('on<E extends HAEntityId>(entities: E[],');
-      // Should appear before string fallback
-      const arrayOnIdx = content.indexOf('on<E extends HAEntityId>(entities: E[],');
-      const fallbackOnIdx = content.indexOf('on(entityOrDomain: string | string[],');
-      expect(arrayOnIdx).toBeGreaterThan(-1);
-      expect(fallbackOnIdx).toBeGreaterThan(arrayOnIdx);
       cleanup();
     });
 
@@ -484,11 +467,6 @@ describe('generateTypes()', () => {
       expect(content).toContain("entity: 'light', service: S,");
       // No domain callService for sensor (no sensor services in test data)
       expect(content).not.toContain("entity: 'sensor', service: S,");
-      // Domain overloads appear before string fallback
-      const domainCallIdx = content.indexOf("entity: 'light', service: S,");
-      const fallbackCallIdx = content.indexOf('callService(entity: string, service: string,');
-      expect(domainCallIdx).toBeGreaterThan(-1);
-      expect(fallbackCallIdx).toBeGreaterThan(domainCallIdx);
       cleanup();
     });
 
@@ -500,8 +478,8 @@ describe('generateTypes()', () => {
       // Typed reactions with mapped entity keys
       expect(content).toContain('reactions<K extends HAEntityId>(rules: {');
       expect(content).toContain("to?: HAEntityMap[E]['state']");
-      // String fallback reactions
-      expect(content).toContain('reactions(rules: Record<string, ReactionRule>): () => void;');
+      // No string fallback
+      expect(content).not.toContain('reactions(rules: Record<string, ReactionRule>): () => void;');
       cleanup();
     });
   });
