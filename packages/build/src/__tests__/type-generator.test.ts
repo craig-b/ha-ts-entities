@@ -399,11 +399,48 @@ describe('generateTypes()', () => {
       generateTypes(makeRegistryData(), outputDir);
       const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
 
-      // One generic overload per entity (service narrows via HAEntityMap)
-      expect(content).toContain("callService<S extends keyof HAEntityMap['light.living_room']['services']>(entity: 'light.living_room', service: S, data?: HAEntityMap['light.living_room']['services'][S]): Promise<void>;");
+      // One generic overload per entity (service narrows via HAEntityMap, return type is conditional on responds)
+      expect(content).toContain("callService<S extends keyof HAEntityMap['light.living_room']['services']>(entity: 'light.living_room', service: S, data?: HAEntityMap['light.living_room']['services'][S]['data']): Promise<HAEntityMap['light.living_room']['services'][S]['responds'] extends true ? Record<string, unknown> : null>;");
       // Entities without services for their domain should not have callService overloads
       // sensor.temperature has no sensor services in this test data
       expect(content).not.toContain("callService<S extends keyof HAEntityMap['sensor.temperature']");
+      cleanup();
+    });
+
+    it('marks services with response data as responds: true in HAEntityMap', () => {
+      setup();
+      const data = makeRegistryData({
+        services: {
+          ...makeRegistryData().services,
+          ai_task: {
+            generate_data: {
+              fields: {
+                task_name: { required: true, selector: { text: {} } },
+                instructions: { required: true, selector: { text: {} } },
+              },
+              response: { optional: false },
+            },
+          },
+        },
+        states: [
+          ...makeRegistryData().states,
+          {
+            entity_id: 'ai_task.openai',
+            state: 'idle',
+            attributes: { friendly_name: 'OpenAI' },
+            last_changed: '2024-01-15T10:00:00.000Z',
+            last_updated: '2024-01-15T10:00:00.000Z',
+          },
+        ],
+      });
+      generateTypes(data, outputDir);
+      const content = fs.readFileSync(path.join(outputDir, 'ha-registry.d.ts'), 'utf-8');
+
+      // ai_task.generate_data should have responds: true
+      expect(content).toContain('generate_data: { data: {');
+      expect(content).toContain('responds: true');
+      // light.turn_on should have responds: false (on a nearby line)
+      expect(content).toContain('responds: false');
       cleanup();
     });
 

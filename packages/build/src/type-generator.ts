@@ -16,6 +16,8 @@ export interface HAService {
   description?: string;
   fields: Record<string, HAServiceField>;
   target?: Record<string, unknown>;
+  /** Whether this service returns response data. Set by HA's SupportsResponse enum. */
+  response?: { optional: boolean };
 }
 
 export interface HAServiceDomain {
@@ -369,7 +371,7 @@ export function generateTypes(data: HARegistryData, outputDir: string): TypeGenR
     const domainServices = servicesByDomain.get(domain);
     if (domainServices && domainServices.size > 0) {
       callServiceOverloads.push(
-        `  callService<S extends keyof HAEntityMap['${escapedId}']['services']>(entity: '${escapedId}', service: S, data?: HAEntityMap['${escapedId}']['services'][S]): Promise<void>;`,
+        `  callService<S extends keyof HAEntityMap['${escapedId}']['services']>(entity: '${escapedId}', service: S, data?: HAEntityMap['${escapedId}']['services'][S]['data']): Promise<HAEntityMap['${escapedId}']['services'][S]['responds'] extends true ? Record<string, unknown> : null>;`,
       );
     }
   }
@@ -394,7 +396,7 @@ export function generateTypes(data: HARegistryData, outputDir: string): TypeGenR
     if (domainServices && domainServices.size > 0) {
       const escapedDomain = escapeQuotes(domain);
       domainCallServiceOverloads.push(
-        `  callService<S extends keyof HAEntityMap[\`${escapedDomain}.\${string}\` & HAEntityId]['services']>(entity: '${escapedDomain}', service: S, data?: HAEntityMap[\`${escapedDomain}.\${string}\` & HAEntityId]['services'][S]): Promise<void>;`,
+        `  callService<S extends keyof HAEntityMap[\`${escapedDomain}.\${string}\` & HAEntityId]['services']>(entity: '${escapedDomain}', service: S, data?: HAEntityMap[\`${escapedDomain}.\${string}\` & HAEntityId]['services'][S]['data']): Promise<HAEntityMap[\`${escapedDomain}.\${string}\` & HAEntityId]['services'][S]['responds'] extends true ? Record<string, unknown> : null>;`,
       );
     }
   }
@@ -624,7 +626,8 @@ function generateServicesType(
     const fieldsStr = fields.length > 0
       ? `{\n${fields.join('\n')}\n    }`
       : '{}';
-    svcFields.push(`      ${safeKey(serviceName)}: ${fieldsStr};`);
+    const hasResponse = service.response ? 'true' : 'false';
+    svcFields.push(`      ${safeKey(serviceName)}: { data: ${fieldsStr}; responds: ${hasResponse} };`);
 
     // Add validator entry for this service
     if (validatorFields.length > 0) {
