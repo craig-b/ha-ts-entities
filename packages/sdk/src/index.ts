@@ -4,6 +4,7 @@ export { light } from './entities/light.js';
 export { cover } from './entities/cover.js';
 export { climate } from './entities/climate.js';
 export { entityFactory } from './entities/factory.js';
+export { device } from './entities/device.js';
 
 export type { SensorOptions } from './entities/sensor.js';
 export type { SwitchOptions } from './entities/switch.js';
@@ -49,4 +50,10 @@ export type {
   EntityDefinition,
   EntityFactory,
   ResolvedEntity,
+  DeviceEntityHandle,
+  DeviceCommandEntityHandle,
+  EntityHandleFor,
+  DeviceContext,
+  DeviceOptions,
+  DeviceDefinition,
 } from './types.js';

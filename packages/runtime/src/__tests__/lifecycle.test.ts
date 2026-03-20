@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EntityLifecycleManager } from '../lifecycle.js';
 import type { Transport } from '../transport.js';
-import type { ResolvedEntity, SensorDefinition, SwitchDefinition } from '@ha-ts-entities/sdk';
+import type { ResolvedDevice } from '../loader.js';
+import type { DeviceDefinition, ResolvedEntity, SensorDefinition, SwitchDefinition } from '@ha-ts-entities/sdk';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -298,5 +299,179 @@ describe('EntityLifecycleManager', () => {
     await manager.deploy([makeSensorEntity('x'), makeSensorEntity('y'), makeSensorEntity('z')]);
     expect(manager.getEntityIds()).toEqual(expect.arrayContaining(['x', 'y', 'z']));
     expect(manager.getEntityIds()).toHaveLength(3);
+  });
+
+  // -------------------------------------------------------------------------
+  // Device lifecycle tests
+  // -------------------------------------------------------------------------
+
+  describe('device lifecycle', () => {
+    function makeDeviceWithEntities(): {
+      entities: ResolvedEntity[];
+      devices: ResolvedDevice[];
+      initFn: ReturnType<typeof vi.fn>;
+      destroyFn: ReturnType<typeof vi.fn>;
+    } {
+      const initFn = vi.fn();
+      const destroyFn = vi.fn();
+
+      const tempDef: SensorDefinition = {
+        id: 'ws_temp', name: 'Temperature', type: 'sensor',
+        config: { device_class: 'temperature', unit_of_measurement: '°C' },
+      };
+      const humidityDef: SensorDefinition = {
+        id: 'ws_humidity', name: 'Humidity', type: 'sensor',
+        config: { device_class: 'humidity', unit_of_measurement: '%' },
+      };
+
+      const deviceDef: DeviceDefinition = {
+        __kind: 'device',
+        id: 'weather_station',
+        name: 'Weather Station',
+        entities: { temperature: tempDef, humidity: humidityDef },
+        init: initFn,
+        destroy: destroyFn,
+      };
+
+      const entities: ResolvedEntity[] = [
+        { definition: tempDef, sourceFile: 'weather.ts', deviceId: 'weather_station' },
+        { definition: humidityDef, sourceFile: 'weather.ts', deviceId: 'weather_station' },
+      ];
+
+      const devices: ResolvedDevice[] = [{
+        definition: deviceDef,
+        sourceFile: 'weather.ts',
+        entityIds: ['ws_temp', 'ws_humidity'],
+      }];
+
+      return { entities, devices, initFn, destroyFn };
+    }
+
+    it('registers device entities and calls device init()', async () => {
+      const { entities, devices, initFn } = makeDeviceWithEntities();
+
+      await manager.deploy(entities, devices);
+
+      expect(transport.register).toHaveBeenCalledTimes(2);
+      expect(initFn).toHaveBeenCalledTimes(1);
+      expect(manager.getEntityIds()).toEqual(expect.arrayContaining(['ws_temp', 'ws_humidity']));
+    });
+
+    it('does not call individual entity init() for device-owned entities', async () => {
+      const entityInit = vi.fn(() => '42');
+      const tempDef: SensorDefinition = {
+        id: 'ws_temp', name: 'Temperature', type: 'sensor',
+        init: entityInit,
+      };
+
+      const deviceDef: DeviceDefinition = {
+        __kind: 'device', id: 'dev1', name: 'Dev', entities: { temperature: tempDef },
+        init: vi.fn(),
+      };
+
+      const entities: ResolvedEntity[] = [
+        { definition: tempDef, sourceFile: 'test.ts', deviceId: 'dev1' },
+      ];
+      const devices: ResolvedDevice[] = [{
+        definition: deviceDef, sourceFile: 'test.ts', entityIds: ['ws_temp'],
+      }];
+
+      await manager.deploy(entities, devices);
+
+      // The entity's own init should NOT be called
+      expect(entityInit).not.toHaveBeenCalled();
+    });
+
+    it('provides entity handles with update() in device context', async () => {
+      const { entities, devices, initFn } = makeDeviceWithEntities();
+
+      initFn.mockImplementation(function(this: { entities: Record<string, { update: (v: unknown) => void }> }) {
+        this.entities.temperature.update('22.5');
+        this.entities.humidity.update('65');
+      });
+
+      await manager.deploy(entities, devices);
+      await Promise.resolve(); // flush microtasks
+
+      expect(transport.publishState).toHaveBeenCalledWith('ws_temp', '22.5', undefined);
+      expect(transport.publishState).toHaveBeenCalledWith('ws_humidity', '65', undefined);
+      expect(manager.getEntityState('ws_temp')).toBe('22.5');
+      expect(manager.getEntityState('ws_humidity')).toBe('65');
+    });
+
+    it('calls device destroy() on teardown', async () => {
+      const { entities, devices, destroyFn } = makeDeviceWithEntities();
+
+      await manager.deploy(entities, devices);
+      await manager.teardownAll();
+
+      expect(destroyFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('provides poll() in device context that fires immediately', async () => {
+      const { entities, devices, initFn } = makeDeviceWithEntities();
+      let pollCount = 0;
+
+      initFn.mockImplementation(function(this: { poll: (fn: () => void, opts: { interval: number }) => void; entities: Record<string, { update: (v: unknown) => void }> }) {
+        this.poll(() => {
+          pollCount++;
+          this.entities.temperature.update(`tick-${pollCount}`);
+        }, { interval: 1000 });
+      });
+
+      await manager.deploy(entities, devices);
+      await vi.advanceTimersByTimeAsync(0); // flush immediate
+
+      expect(pollCount).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(pollCount).toBe(3);
+    });
+
+    it('registers command handlers for bidirectional entities in devices', async () => {
+      const switchDef: SwitchDefinition = {
+        id: 'dev_switch', name: 'Switch', type: 'switch',
+        onCommand: vi.fn(),
+      };
+
+      const deviceInit = vi.fn(function(this: { entities: Record<string, { onCommand: (h: (cmd: unknown) => void) => void }> }) {
+        this.entities.sw.onCommand((cmd) => {
+          // device handles the command
+        });
+      });
+
+      const deviceDef: DeviceDefinition = {
+        __kind: 'device', id: 'dev2', name: 'Dev',
+        entities: { sw: switchDef },
+        init: deviceInit,
+      };
+
+      const entities: ResolvedEntity[] = [
+        { definition: switchDef, sourceFile: 'test.ts', deviceId: 'dev2' },
+      ];
+      const devices: ResolvedDevice[] = [{
+        definition: deviceDef, sourceFile: 'test.ts', entityIds: ['dev_switch'],
+      }];
+
+      await manager.deploy(entities, devices);
+
+      // Transport should have a command handler registered
+      expect(transport.onCommand).toHaveBeenCalledWith('dev_switch', expect.any(Function));
+    });
+
+    it('clears device timer handles on teardown', async () => {
+      const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+      const { entities, devices, initFn } = makeDeviceWithEntities();
+
+      initFn.mockImplementation(function(this: { poll: (fn: () => void, opts: { interval: number }) => void }) {
+        this.poll(() => {}, { interval: 5000 });
+      });
+
+      await manager.deploy(entities, devices);
+      await manager.teardownAll();
+
+      // poll creates an interval that should be cleared
+      expect(clearIntervalSpy).toHaveBeenCalled();
+    });
   });
 });

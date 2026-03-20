@@ -1,4 +1,5 @@
 import type { ResolvedEntity } from '@ha-ts-entities/sdk';
+import type { ResolvedDevice } from './loader.js';
 import type { LifecycleLogger, RawMqttAccess } from './lifecycle.js';
 import { EntityLifecycleManager } from './lifecycle.js';
 import { loadBundles } from './loader.js';
@@ -90,11 +91,24 @@ export class BuildManager {
     // Teardown all existing entities first
     await this.lifecycle.teardownAll();
 
+    // Group devices by source file for isolation
+    const devicesByFile = new Map<string, ResolvedDevice[]>();
+    for (const device of loadResult.devices) {
+      const file = device.sourceFile;
+      let group = devicesByFile.get(file);
+      if (!group) {
+        group = [];
+        devicesByFile.set(file, group);
+      }
+      group.push(device);
+    }
+
     // Deploy each file's entities independently
     let deployedCount = 0;
     for (const [file, entities] of byFile) {
       try {
-        await this.lifecycle.deploy(entities);
+        const devices = devicesByFile.get(file) ?? [];
+        await this.lifecycle.deploy(entities, devices);
         deployedCount += entities.length;
         this.logger.info(`Deployed ${entities.length} entities from ${file}`);
       } catch (err) {

@@ -1,10 +1,18 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import type { EntityDefinition, EntityFactory, ResolvedEntity, EntityLogger } from '@ha-ts-entities/sdk';
+import type { EntityDefinition, EntityFactory, ResolvedEntity, EntityLogger, DeviceDefinition } from '@ha-ts-entities/sdk';
 import type { HAClient } from './ha-api.js';
+
+/** A resolved device definition with its source file and entity IDs. */
+export interface ResolvedDevice {
+  definition: DeviceDefinition;
+  sourceFile: string;
+  entityIds: string[];
+}
 
 export interface LoadResult {
   entities: ResolvedEntity[];
+  devices: ResolvedDevice[];
   errors: LoadError[];
 }
 
@@ -26,6 +34,7 @@ export async function installGlobals(haClient?: HAClient, logger?: EntityLogger)
   g.cover = sdk.cover;
   g.climate = sdk.climate;
   g.entityFactory = sdk.entityFactory;
+  g.device = sdk.device;
 
   // Always provide ha global — with full client or stub with working log
   const noopLogger: EntityLogger = {
@@ -56,18 +65,20 @@ export async function installGlobals(haClient?: HAClient, logger?: EntityLogger)
  */
 export async function loadBundles(bundleDir: string): Promise<LoadResult> {
   const entities: ResolvedEntity[] = [];
+  const devices: ResolvedDevice[] = [];
   const errors: LoadError[] = [];
 
   if (!fs.existsSync(bundleDir)) {
-    return { entities, errors };
+    return { entities, devices, errors };
   }
 
   const jsFiles = findJsFiles(bundleDir);
 
   for (const file of jsFiles) {
     try {
-      const fileEntities = await loadSingleBundle(file, bundleDir);
-      entities.push(...fileEntities);
+      const result = await loadSingleBundle(file, bundleDir);
+      entities.push(...result.entities);
+      devices.push(...result.devices);
     } catch (err) {
       errors.push({
         file,
@@ -76,13 +87,13 @@ export async function loadBundles(bundleDir: string): Promise<LoadResult> {
     }
   }
 
-  return { entities, errors };
+  return { entities, devices, errors };
 }
 
 async function loadSingleBundle(
   filePath: string,
   bundleDir: string,
-): Promise<ResolvedEntity[]> {
+): Promise<{ entities: ResolvedEntity[]; devices: ResolvedDevice[] }> {
   // Dynamic import — file:// URL required for absolute paths on all platforms
   const fileUrl = `file://${filePath}`;
   const mod = await import(fileUrl);
@@ -92,10 +103,13 @@ async function loadSingleBundle(
 
   const definitions: EntityDefinition[] = [];
   const factories: EntityFactory[] = [];
+  const deviceDefs: DeviceDefinition[] = [];
 
-  // Walk all exports
+  // Walk all exports — check devices first since they also have id/name
   for (const [, value] of Object.entries(mod)) {
-    if (isEntityDefinition(value)) {
+    if (isDeviceDefinition(value)) {
+      deviceDefs.push(value);
+    } else if (isEntityDefinition(value)) {
       definitions.push(value);
     } else if (isEntityFactory(value)) {
       factories.push(value);
@@ -114,15 +128,49 @@ async function loadSingleBundle(
     }
   }
 
-  // Group entities by device or file
-  return definitions.map((definition) => {
+  // Group standalone entities by device or file
+  const entities: ResolvedEntity[] = definitions.map((definition) => {
     const deviceId = definition.device?.id ?? fileBaseName;
-    return {
-      definition,
-      sourceFile,
-      deviceId,
-    };
+    return { definition, sourceFile, deviceId };
   });
+
+  // Resolve device definitions into individual entities
+  const devices: ResolvedDevice[] = [];
+  for (const dev of deviceDefs) {
+    const deviceInfo = {
+      id: dev.id,
+      name: dev.name,
+      ...(dev.manufacturer && { manufacturer: dev.manufacturer }),
+      ...(dev.model && { model: dev.model }),
+      ...(dev.sw_version && { sw_version: dev.sw_version }),
+      ...(dev.suggested_area && { suggested_area: dev.suggested_area }),
+    };
+
+    const entityIds: string[] = [];
+    for (const [, entityDef] of Object.entries(dev.entities)) {
+      // Stamp device info onto each entity
+      entityDef.device = deviceInfo;
+      entityIds.push(entityDef.id);
+      entities.push({
+        definition: entityDef,
+        sourceFile,
+        deviceId: dev.id,
+      });
+    }
+
+    devices.push({ definition: dev, sourceFile, entityIds });
+  }
+
+  return { entities, devices };
+}
+
+function isDeviceDefinition(value: unknown): value is DeviceDefinition {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    '__kind' in value &&
+    (value as Record<string, unknown>).__kind === 'device'
+  );
 }
 
 function isEntityDefinition(value: unknown): value is EntityDefinition {

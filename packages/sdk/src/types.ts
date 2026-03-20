@@ -698,3 +698,118 @@ export interface ResolvedEntity {
   /** Device ID this entity is assigned to. */
   deviceId: string;
 }
+
+// ---- Device ----
+
+/**
+ * Handle for updating an entity's state from within a device's `init()`.
+ * @typeParam TState - The entity's state type.
+ */
+export interface DeviceEntityHandle<TState> {
+  /** Publish a new state value for this entity. */
+  update(value: TState, attributes?: Record<string, unknown>): void;
+}
+
+/**
+ * Handle for a bidirectional entity (switch, light, cover, climate) within a device.
+ * Adds `onCommand()` registration to the base handle.
+ */
+export interface DeviceCommandEntityHandle<TState, TCommand> extends DeviceEntityHandle<TState> {
+  /** Register a command handler for this entity. */
+  onCommand(handler: (command: TCommand) => void | Promise<void>): void;
+}
+
+/**
+ * Maps an entity definition type to its device handle type.
+ * Sensors get update-only handles; bidirectional entities also get onCommand.
+ */
+export type EntityHandleFor<T extends EntityDefinition> =
+  T extends SwitchDefinition ? DeviceCommandEntityHandle<'on' | 'off', 'ON' | 'OFF'> :
+  T extends LightDefinition ? DeviceCommandEntityHandle<LightState, LightCommand> :
+  T extends CoverDefinition ? DeviceCommandEntityHandle<CoverState, CoverCommand> :
+  T extends ClimateDefinition ? DeviceCommandEntityHandle<ClimateState, ClimateCommand> :
+  T extends SensorDefinition ? DeviceEntityHandle<string | number> :
+  T extends BinarySensorDefinition ? DeviceEntityHandle<'on' | 'off'> :
+  DeviceEntityHandle<unknown>;
+
+/**
+ * Context bound as `this` inside a device's `init()` and `destroy()` callbacks.
+ * Provides managed timers, HTTP access, HA client, and typed handles for each entity.
+ */
+export interface DeviceContext<TEntities extends Record<string, EntityDefinition>> {
+  /** Typed handles for updating each entity in the device. */
+  entities: { [K in keyof TEntities]: EntityHandleFor<TEntities[K]> };
+  /**
+   * Start a managed polling loop. Fires immediately, then repeats on interval.
+   * Unlike entity poll(), this does NOT auto-update a state — call
+   * `this.entities.xxx.update()` inside the callback.
+   */
+  poll(fn: () => void | Promise<void>, opts: { interval: number }): void;
+  /** Scoped logger for this device. */
+  log: EntityLogger;
+  /** Home Assistant client for state subscriptions, service calls, and more. */
+  ha: HAClientBase;
+  /** Standard `fetch()` API for HTTP requests. */
+  fetch: typeof globalThis.fetch;
+  /** Schedule a one-shot callback. Auto-cleared on device teardown. */
+  setTimeout(fn: () => void, ms: number): void;
+  /** Schedule a repeating callback. Auto-cleared on device teardown. */
+  setInterval(fn: () => void, ms: number): void;
+  /** Direct MQTT publish/subscribe access. */
+  mqtt: {
+    publish(topic: string, payload: string, opts?: { retain?: boolean }): void;
+    subscribe(topic: string, handler: (payload: string) => void): void;
+  };
+}
+
+/**
+ * Options for defining a device with grouped entities.
+ * @typeParam TEntities - Map of entity keys to entity definitions.
+ */
+export interface DeviceOptions<TEntities extends Record<string, EntityDefinition>> {
+  /** Unique device identifier. */
+  id: string;
+  /** Human-readable device name shown in the HA UI. */
+  name: string;
+  /** Device manufacturer. */
+  manufacturer?: string;
+  /** Device model. */
+  model?: string;
+  /** Software/firmware version. */
+  sw_version?: string;
+  /** Suggested area to assign this device to. */
+  suggested_area?: string;
+  /** Map of entity keys to entity definitions. */
+  entities: TEntities;
+  /** Called once when the device is deployed. Set up polling, subscriptions, and command handlers. */
+  init(this: DeviceContext<TEntities>): void | Promise<void>;
+  /** Called when the device is torn down. Use for cleanup beyond auto-tracked handles. */
+  destroy?(this: DeviceContext<TEntities>): void | Promise<void>;
+}
+
+/**
+ * A device definition that groups multiple entities with a shared lifecycle.
+ * Created by the `device()` factory function.
+ */
+export interface DeviceDefinition<TEntities extends Record<string, EntityDefinition> = Record<string, EntityDefinition>> {
+  /** Discriminant for loader detection. */
+  __kind: 'device';
+  /** Unique device identifier. */
+  id: string;
+  /** Human-readable device name shown in the HA UI. */
+  name: string;
+  /** Device manufacturer. */
+  manufacturer?: string;
+  /** Device model. */
+  model?: string;
+  /** Software/firmware version. */
+  sw_version?: string;
+  /** Suggested area to assign this device to. */
+  suggested_area?: string;
+  /** Map of entity keys to entity definitions. */
+  entities: TEntities;
+  /** Called once when the device is deployed. */
+  init(this: DeviceContext<TEntities>): void | Promise<void>;
+  /** Called when the device is torn down. */
+  destroy?(this: DeviceContext<TEntities>): void | Promise<void>;
+}

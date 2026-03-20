@@ -109,6 +109,8 @@ declare function cover(options: CoverOptions): CoverDefinition;
 declare function climate(options: ClimateOptions): ClimateDefinition;
 /** Create an entity factory for dynamic entity generation at runtime. */
 declare function entityFactory(factory: () => EntityDefinition[] | Promise<EntityDefinition[]>): EntityFactory;
+/** Define a device that groups multiple entities with a shared lifecycle, polling, and cleanup. */
+declare function device<TEntities extends Record<string, EntityDefinition>>(options: DeviceOptions<TEntities>): DeviceDefinition<TEntities>;
 /** Home Assistant client API — subscribe to state changes, call services, query state, and set up reactions. */
 declare const ha: HAClient;
 

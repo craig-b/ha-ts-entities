@@ -1,10 +1,13 @@
 import type {
+  DeviceContext,
+  DeviceDefinition,
   EntityContext,
   EntityDefinition,
   EntityLogger,
   ResolvedEntity,
 } from '@ha-ts-entities/sdk';
 import type { HAClient } from './ha-api.js';
+import type { ResolvedDevice } from './loader.js';
 import type { Transport } from './transport.js';
 
 export interface LifecycleLogger {
@@ -20,6 +23,18 @@ interface EntityInstance {
   handles: TrackedHandles;
   currentState: unknown;
   initialized: boolean;
+  /** Entity IDs owned by a device skip individual init/destroy. */
+  ownedByDevice?: string;
+}
+
+interface DeviceInstance {
+  device: ResolvedDevice;
+  handles: TrackedHandles;
+  initialized: boolean;
+  /** Command handlers registered via entity handles. */
+  commandHandlers: Map<string, (command: unknown) => void | Promise<void>>;
+  /** Stored context for calling destroy(). */
+  context?: DeviceContext<Record<string, EntityDefinition>>;
 }
 
 interface TrackedHandles {
@@ -46,6 +61,7 @@ function createEmptyHandles(): TrackedHandles {
 
 export class EntityLifecycleManager {
   private instances = new Map<string, EntityInstance>();
+  private deviceInstances = new Map<string, DeviceInstance>();
   private transport: Transport;
   private logger: LifecycleLogger;
   private haClient: HAClient | null;
@@ -58,14 +74,24 @@ export class EntityLifecycleManager {
     this.rawMqtt = rawMqtt ?? null;
   }
 
-  async deploy(entities: ResolvedEntity[]): Promise<void> {
-    // Teardown existing entities
+  async deploy(entities: ResolvedEntity[], devices?: ResolvedDevice[]): Promise<void> {
+    // Teardown existing entities and devices
     await this.teardownAll();
 
-    // Register and init new entities
+    // Collect entity IDs owned by devices so we skip individual init for them
+    const deviceOwnedEntityIds = new Set<string>();
+    if (devices) {
+      for (const dev of devices) {
+        for (const eid of dev.entityIds) {
+          deviceOwnedEntityIds.add(eid);
+        }
+      }
+    }
+
+    // Register and init standalone entities (not owned by a device)
     for (const entity of entities) {
       try {
-        await this.registerAndInit(entity);
+        await this.registerAndInit(entity, deviceOwnedEntityIds.has(entity.definition.id) ? entity.deviceId : undefined);
       } catch (err) {
         this.logger.error(`Failed to initialize entity ${entity.definition.id}`, {
           error: err instanceof Error ? err.message : String(err),
@@ -73,21 +99,46 @@ export class EntityLifecycleManager {
         });
       }
     }
+
+    // Init devices (their entities are already registered above)
+    if (devices) {
+      for (const dev of devices) {
+        try {
+          await this.initDevice(dev);
+        } catch (err) {
+          this.logger.error(`Failed to initialize device ${dev.definition.id}`, {
+            error: err instanceof Error ? err.message : String(err),
+            sourceFile: dev.sourceFile,
+          });
+        }
+      }
+    }
   }
 
-  private async registerAndInit(entity: ResolvedEntity): Promise<void> {
+  private async registerAndInit(entity: ResolvedEntity, ownedByDevice?: string): Promise<void> {
     const handles = createEmptyHandles();
     const instance: EntityInstance = {
       entity,
       handles,
       currentState: undefined,
       initialized: false,
+      ownedByDevice,
     };
 
     this.instances.set(entity.definition.id, instance);
 
     // Register with transport (publishes MQTT discovery)
     await this.transport.register(entity);
+
+    // Device-owned entities: skip individual init and command registration.
+    // The device's init() will set up command handlers via entity handles.
+    if (ownedByDevice) {
+      instance.initialized = true;
+      this.logger.info(`Entity registered (device ${ownedByDevice}): ${entity.definition.id}`, {
+        sourceFile: entity.sourceFile,
+      });
+      return;
+    }
 
     // Set up command handler for bidirectional entities
     if ('onCommand' in entity.definition && typeof entity.definition.onCommand === 'function') {
@@ -111,9 +162,6 @@ export class EntityLifecycleManager {
     if (entity.definition.init) {
       const context = this.createContext(instance);
       try {
-        // Cast through any — the union of different `this` types on init() is not
-        // directly callable with EntityContext<unknown>, but at runtime the context
-        // is fully compatible. The type safety is enforced at the SDK definition site.
         const initFn = entity.definition.init as (this: EntityContext) => unknown | Promise<unknown>;
         const initialState = await initFn.call(context);
         if (initialState !== undefined) {
@@ -129,7 +177,6 @@ export class EntityLifecycleManager {
           error: err instanceof Error ? err.message : String(err),
           sourceFile: entity.sourceFile,
         });
-        // Clean up the failed entity
         await this.teardown(entity.definition.id);
         throw err;
       }
@@ -141,7 +188,188 @@ export class EntityLifecycleManager {
     }
   }
 
+  private async initDevice(resolvedDevice: ResolvedDevice): Promise<void> {
+    const dev = resolvedDevice.definition;
+    const handles = createEmptyHandles();
+    const commandHandlers = new Map<string, (command: unknown) => void | Promise<void>>();
+
+    const deviceInstance: DeviceInstance = {
+      device: resolvedDevice,
+      handles,
+      initialized: false,
+      commandHandlers,
+    };
+
+    this.deviceInstances.set(dev.id, deviceInstance);
+
+    // Build entity handles for the device context
+    const entityHandles: Record<string, { update: (value: unknown, attributes?: Record<string, unknown>) => void; onCommand?: (handler: (command: unknown) => void | Promise<void>) => void }> = {};
+
+    for (const [key, entityDef] of Object.entries(dev.entities)) {
+      const entityId = entityDef.id;
+      const entityInstance = this.instances.get(entityId);
+      if (!entityInstance) {
+        this.logger.warn(`Device ${dev.id}: entity ${entityId} not found in instances`);
+        continue;
+      }
+
+      const handle: { update: (value: unknown, attributes?: Record<string, unknown>) => void; onCommand?: (handler: (command: unknown) => void | Promise<void>) => void } = {
+        update: (value: unknown, attributes?: Record<string, unknown>) => {
+          entityInstance.currentState = value;
+          this.transport.publishState(entityId, value, attributes).catch((err) => {
+            this.logger.error(`Failed to publish state for ${entityId}`, {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        },
+      };
+
+      // Add onCommand for bidirectional entity types
+      if (entityDef.type === 'switch' || entityDef.type === 'light' || entityDef.type === 'cover' || entityDef.type === 'climate') {
+        handle.onCommand = (handler: (command: unknown) => void | Promise<void>) => {
+          commandHandlers.set(entityId, handler);
+        };
+
+        // Register transport command listener that delegates to the device's handler
+        this.transport.onCommand(entityId, (command) => {
+          const h = commandHandlers.get(entityId);
+          if (h) {
+            try {
+              const result = h(command);
+              if (result instanceof Promise) {
+                result.catch((err) => {
+                  this.logger.error(`Command handler error for ${entityId}`, {
+                    error: err instanceof Error ? err.message : String(err),
+                    command,
+                  });
+                });
+              }
+            } catch (err) {
+              this.logger.error(`Command handler error for ${entityId}`, {
+                error: err instanceof Error ? err.message : String(err),
+                command,
+              });
+            }
+          } else {
+            this.logger.warn(`No command handler registered for ${entityId} in device ${dev.id}`);
+          }
+        });
+      }
+
+      entityHandles[key] = handle;
+    }
+
+    // Build the device context
+    const scopedLogger = this.logger.forEntity
+      ? this.logger.forEntity(dev.id, resolvedDevice.sourceFile)
+      : this.logger;
+
+    const entityLogger: EntityLogger = {
+      debug: (msg, data) => scopedLogger.debug(msg, data),
+      info: (msg, data) => scopedLogger.info(msg, data),
+      warn: (msg, data) => scopedLogger.warn(msg, data),
+      error: (msg, data) => scopedLogger.error(msg, data),
+    };
+
+    const haClient = this.haClient;
+    const rawMqtt = this.rawMqtt;
+
+    const ha: HAClient = haClient ?? {
+      log: entityLogger,
+      on() { entityLogger.warn('ha.on() unavailable — no WebSocket connection'); return () => {}; },
+      async callService() { entityLogger.warn('ha.callService() unavailable — no WebSocket connection'); },
+      async getState() { entityLogger.warn('ha.getState() unavailable — no WebSocket connection'); return null; },
+      async getEntities() { entityLogger.warn('ha.getEntities() unavailable — no WebSocket connection'); return []; },
+      async fireEvent() { entityLogger.warn('ha.fireEvent() unavailable — no WebSocket connection'); },
+      reactions() { entityLogger.warn('ha.reactions() unavailable — no WebSocket connection'); return () => {}; },
+      friendlyName(entityId: string) { return entityId; },
+    };
+
+    const context: DeviceContext<Record<string, EntityDefinition>> = {
+      entities: entityHandles as DeviceContext<Record<string, EntityDefinition>>['entities'],
+
+      poll(fn: () => void | Promise<void>, opts: { interval: number }) {
+        const run = async () => {
+          try {
+            await fn();
+          } catch (err) {
+            entityLogger.error('Device poll error', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        };
+        run();
+        const interval = globalThis.setInterval(run, opts.interval);
+        handles.pollIntervals.push(interval);
+      },
+
+      log: entityLogger,
+
+      setTimeout(fn: () => void, ms: number) {
+        const t = globalThis.setTimeout(fn, ms);
+        handles.timeouts.push(t);
+      },
+
+      setInterval(fn: () => void, ms: number) {
+        const i = globalThis.setInterval(fn, ms);
+        handles.intervals.push(i);
+      },
+
+      fetch: globalThis.fetch,
+      ha,
+
+      mqtt: {
+        publish(topic, payload, opts) {
+          if (!rawMqtt) { entityLogger.warn('mqtt.publish() unavailable — no MQTT connection'); return; }
+          rawMqtt.publishRaw(topic, payload, opts);
+        },
+        subscribe(topic, handler) {
+          if (!rawMqtt) { entityLogger.warn('mqtt.subscribe() unavailable — no MQTT connection'); return; }
+          const unsub = rawMqtt.subscribeRaw(topic, handler);
+          handles.mqttSubscriptions.push(unsub);
+        },
+      },
+    };
+
+    // Store context for destroy()
+    deviceInstance.context = context;
+
+    // Call device init()
+    try {
+      await dev.init.call(context);
+      deviceInstance.initialized = true;
+      this.logger.info(`Device initialized: ${dev.id}`, {
+        sourceFile: resolvedDevice.sourceFile,
+        entityCount: resolvedDevice.entityIds.length,
+      });
+    } catch (err) {
+      this.logger.error(`Device init() failed for ${dev.id}`, {
+        error: err instanceof Error ? err.message : String(err),
+        sourceFile: resolvedDevice.sourceFile,
+      });
+      this.disposeHandles(handles);
+      this.deviceInstances.delete(dev.id);
+      throw err;
+    }
+  }
+
   async teardownAll(): Promise<void> {
+    // Teardown devices first (they may reference entity instances)
+    for (const [deviceId, deviceInstance] of this.deviceInstances) {
+      if (deviceInstance.device.definition.destroy && deviceInstance.initialized && deviceInstance.context) {
+        try {
+          await deviceInstance.device.definition.destroy.call(deviceInstance.context);
+        } catch (err) {
+          this.logger.error(`Device destroy() failed for ${deviceId}`, {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      this.disposeHandles(deviceInstance.handles);
+    }
+    this.deviceInstances.clear();
+
+    // Then teardown all entities
     const ids = [...this.instances.keys()];
     for (const id of ids) {
       await this.teardown(id);
@@ -152,8 +380,8 @@ export class EntityLifecycleManager {
     const instance = this.instances.get(entityId);
     if (!instance) return;
 
-    // Call destroy() if present
-    if (instance.entity.definition.destroy && instance.initialized) {
+    // Call destroy() if present (skip for device-owned entities — device handles its own teardown)
+    if (instance.entity.definition.destroy && instance.initialized && !instance.ownedByDevice) {
       try {
         const context = this.createContext(instance);
         const destroyFn = instance.entity.definition.destroy as (this: EntityContext) => void | Promise<void>;

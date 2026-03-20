@@ -14,7 +14,7 @@ export { EntityLifecycleManager } from './lifecycle.js';
 export type { LifecycleLogger, RawMqttAccess } from './lifecycle.js';
 
 export { loadBundles, installGlobals } from './loader.js';
-export type { LoadResult, LoadError } from './loader.js';
+export type { LoadResult, LoadError, ResolvedDevice } from './loader.js';
 
 export { BuildManager } from './build-manager.js';
 export type { BuildDeployOptions, DeployResult } from './build-manager.js';
