@@ -226,7 +226,7 @@ export class HAWebSocketClient {
     }
   }
 
-  async sendCommand(type: string, data?: Record<string, unknown>): Promise<unknown> {
+  async sendCommand(type: string, data?: Record<string, unknown>, timeoutMs = 30_000): Promise<unknown> {
     if (!this.connected || !this.ws) {
       throw new Error('HA WebSocket not connected');
     }
@@ -235,7 +235,15 @@ export class HAWebSocketClient {
     const message = { id, type, ...data };
 
     return new Promise((resolve, reject) => {
-      this.pendingCommands.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.pendingCommands.delete(id);
+        reject(new Error(`HA command timed out after ${timeoutMs}ms: ${type} (id=${id})`));
+      }, timeoutMs);
+
+      this.pendingCommands.set(id, {
+        resolve: (result) => { clearTimeout(timer); resolve(result); },
+        reject: (err) => { clearTimeout(timer); reject(err); },
+      });
       this.ws!.send(JSON.stringify(message));
     });
   }
